@@ -135,7 +135,7 @@ app.use(
             console.log('Disconnected from server');
         });
         socket.on('data', async function(data) {
-            //console.log('Received message:', data);
+            console.log('Received message:', data);
             const dataObject = JSON.parse(data);
             //console.log("length",dataObject.data.length);
             if (dataObject.data.length > 1) {
@@ -146,7 +146,7 @@ app.use(
                 sessionStatus.pressure = sensorData["pressure"];
                 sessionStatus.main_fsw = sensorData["pressure"] * 33.4;
             
-                sensorData["o2"] = linearConversion(sensorCalibrationData["o2"].sensorLowerLimit, sensorCalibrationData["o2"].sensorUpperLimit, sensorCalibrationData["o2"].sensorAnalogLower, sensorCalibrationData["o2"].sensorAnalogUpper, dataObject.data[2], sensorCalibrationData["o2"].sensorDecimal);
+                sensorData["o2"] = 21.1;
 
             
                 sensorData["temperature"] = linearConversion(sensorCalibrationData["temperature"].sensorLowerLimit, sensorCalibrationData["temperature"].sensorUpperLimit, sensorCalibrationData["temperature"].sensorAnalogLower, sensorCalibrationData["temperature"].sensorAnalogUpper, dataObject.data[4], sensorCalibrationData["temperature"].sensorDecimal);
