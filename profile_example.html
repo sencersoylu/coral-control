@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profil Yönetimi Örneği</title>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+        }
+
+        .controls {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input,
+        select,
+        button {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .profile-steps {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .step-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .step-item:last-child {
+            border-bottom: none;
+        }
+
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            width: auto;
+        }
+
+        .stats {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+
+        #chart {
+            height: 400px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Profil Yönetimi Sistemi</h1>
+    <p>PHP kodundaki [dakika, basınç, tip] veri yapısının JavaScript karşılığı</p>
+
+    <div class="container">
+        <div class="controls">
+            <h3>Profil Adımı Ekle</h3>
+
+            <div class="form-group">
+                <label for="minutes">Dakika:</label>
+                <input type="number" id="minutes" step="0.1" min="0.1" value="5">
+            </div>
+
+            <div class="form-group">
+                <label for="pressure">Basınç (bar):</label>
+                <input type="number" id="pressure" step="0.1" min="0" value="1.5">
+            </div>
+
+            <div class="form-group">
+                <label for="type">Tip:</label>
+                <select id="type">
+                    <option value="air">Hava (air)</option>
+                    <option value="o">Oksijen (o)</option>
+                </select>
+            </div>
+
+            <button onclick="addStep()">Adım Ekle</button>
+            <button onclick="clearProfile()">Profili Temizle</button>
+            <button onclick="exportProfile()">Export JSON</button>
+            <button onclick="loadSampleProfile()">Örnek Profil Yükle</button>
+
+            <div class="stats">
+                <h4>Profil İstatistikleri</h4>
+                <div id="stats">
+                    <p>Toplam Süre: 0 dakika</p>
+                    <p>Maksimum Basınç: 0 bar</p>
+                    <p>Adım Sayısı: 0</p>
+                </div>
+            </div>
+
+            <div class="profile-steps">
+                <h4>Profil Adımları</h4>
+                <div id="steps-list">
+                    <p>Henüz adım eklenmedi</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h3>Basınç Profili Grafiği</h3>
+            <div id="chart"></div>
+        </div>
+    </div>
+
+    <script src="profile_manager.js"></script>
+    <script>
+        // Global profil yöneticisi
+        const profileManager = new ProfileManager();
+        let chart;
+
+        // Sayfa yüklendiğinde grafik oluştur
+        document.addEventListener('DOMContentLoaded', function () {
+            initChart();
+        });
+
+        function initChart() {
+            chart = Highcharts.chart('chart', {
+                title: {
+                    text: 'Basınç Profili'
+                },
+                xAxis: {
+                    title: {
+                        text: 'Zaman (dakika)'
+                    }
+                },
+                yAxis: {
+                    title: {
+                        text: 'Basınç (bar)'
+                    },
+                    min: 0
+                },
+                series: [{
+                    name: 'Hedeflenen Basınç',
+                    data: [],
+                    color: '#007bff',
+                    lineWidth: 2
+                }, {
+                    name: 'Oksijen Fazı',
+                    data: [],
+                    color: '#28a745',
+                    lineWidth: 3
+                }],
+                tooltip: {
+                    valueSuffix: ' bar'
+                },
+                legend: {
+                    enabled: true
+                }
+            });
+        }
+
+        function addStep() {
+            const minutes = parseFloat(document.getElementById('minutes').value);
+            const pressure = parseFloat(document.getElementById('pressure').value);
+            const type = document.getElementById('type').value;
+
+            try {
+                profileManager.addStep(minutes, pressure, type);
+                updateDisplay();
+
+                // Form temizle
+                document.getElementById('minutes').value = '5';
+                document.getElementById('pressure').value = '1.5';
+                document.getElementById('type').value = 'air';
+
+            } catch (error) {
+                alert('Hata: ' + error.message);
+            }
+        }
+
+        function removeStep(index) {
+            try {
+                profileManager.removeStep(index);
+                updateDisplay();
+            } catch (error) {
+                alert('Hata: ' + error.message);
+            }
+        }
+
+        function clearProfile() {
+            profileManager.clearProfile();
+            updateDisplay();
+        }
+
+        function loadSampleProfile() {
+            profileManager.clearProfile();
+
+            // Örnek hiperbarik oksijen tedavi profili
+            profileManager.addStep(5, 1.5, "air");    // Başlangıç basıncına çıkış
+            profileManager.addStep(10, 2.5, "o");     // Oksijen fazı 1
+            profileManager.addStep(5, 2.5, "air");    // Hava molası
+            profileManager.addStep(10, 2.5, "o");     // Oksijen fazı 2
+            profileManager.addStep(5, 2.5, "air");    // Hava molası
+            profileManager.addStep(10, 2.5, "o");     // Oksijen fazı 3
+            profileManager.addStep(15, 1.0, "air");   // Yavaş dekompresyon
+
+            updateDisplay();
+        }
+
+        function exportProfile() {
+            const jsonData = profileManager.exportProfile();
+
+            // JSON'u yeni pencerede göster
+            const newWindow = window.open();
+            newWindow.document.write(`
+                <html>
+                    <head><title>Profil Export</title></head>
+                    <body>
+                        <h3>Profil JSON Verisi</h3>
+                        <pre>${jsonData}</pre>
+                        <button onclick="window.close()">Kapat</button>
+                    </body>
+                </html>
+            `);
+        }
+
+        function updateDisplay() {
+            updateStats();
+            updateStepsList();
+            updateChart();
+        }
+
+        function updateStats() {
+            const totalDuration = profileManager.getTotalDuration();
+            const maxPressure = profileManager.getMaxPressure();
+            const stepCount = profileManager.profile.length;
+
+            document.getElementById('stats').innerHTML = `
+                <p>Toplam Süre: ${totalDuration.toFixed(1)} dakika</p>
+                <p>Maksimum Basınç: ${maxPressure.toFixed(1)} bar</p>
+                <p>Adım Sayısı: ${stepCount}</p>
+            `;
+        }
+
+        function updateStepsList() {
+            const stepsList = document.getElementById('steps-list');
+
+            if (profileManager.profile.length === 0) {
+                stepsList.innerHTML = '<p>Henüz adım eklenmedi</p>';
+                return;
+            }
+
+            let html = '';
+            profileManager.profile.forEach((step, index) => {
+                const [minutes, pressure, type] = step;
+                const typeText = type === 'air' ? 'Hava' : 'Oksijen';
+
+                html += `
+                    <div class="step-item">
+                        <span>
+                            <strong>Adım ${index + 1}:</strong> 
+                            ${minutes} dk, ${pressure} bar, ${typeText}
+                        </span>
+                        <button class="delete-btn" onclick="removeStep(${index})">Sil</button>
+                    </div>
+                `;
+            });
+
+            stepsList.innerHTML = html;
+        }
+
+        function updateChart() {
+            if (!chart) return;
+
+            // Tüm profil verisi için zaman serisi oluştur
+            const allSeries = profileManager.toTimeSeries();
+            const targetSeries = allSeries.map(point => ({ x: point.x, y: point.y || 0 }));
+            const oxygenSeries = allSeries.filter(point => point.y !== null);
+
+            chart.series[0].setData(targetSeries);
+            chart.series[1].setData(oxygenSeries);
+        }
+
+        // Dinamik profil değişikliği simülasyonu
+        function simulateDynamicChange() {
+            if (profileManager.profile.length === 0) {
+                alert('Önce profil oluşturun');
+                return;
+            }
+
+            profileManager.calculateTargetValues();
+
+            // Örnek: 60. saniyede basıncı 1.8 bar'a değiştir
+            profileManager.dynamicProfileChange(60, 120, 1.8, 180);
+            updateDisplay();
+
+            alert('Dinamik değişiklik uygulandı (60-120 saniye arası)');
+        }
+    </script>
+</body>
+
+</html>
