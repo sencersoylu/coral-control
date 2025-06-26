@@ -123,7 +123,7 @@ app.use(
 
 
     try {
-       socket = io.connect('http://192.168.77.100:4000', {reconnect: true});
+       socket = io.connect('http://localhost:4000', {reconnect: true});
         socket.on('connect', function() {
             console.log('Connected to server');
             doorOpen();
@@ -285,6 +285,12 @@ app.use(
             } else if (dt.type == "decompValve") {
                 console.log("deCompValve : ", dt.data.vana);
                 decompValve(dt.data.vana);
+            } else if (dt.type == "drainOn") {
+                console.log("drainOn");
+                drainOn();
+            } else if (dt.type == "drainOff") {
+                console.log("drainOff");
+                drainOff();
             }
         })
         
@@ -832,6 +838,14 @@ function compValve(angle) {
    
     socket.emit('writeRegister', JSON.stringify({register: "R01000", value: send}));
 
+}
+
+function drainOn() {
+    socket.emit('writeBit', { register: "M0120", value: 1 });
+}
+
+function drainOff() {
+    socket.emit('writeBit', { register: "M0120", value: 0 });
 }
 
 function decompValve(angle) {
