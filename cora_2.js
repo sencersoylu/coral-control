@@ -6,100 +6,24 @@ const app = express();
 const http = require('http');
 const { io } = require('socket.io-client');
 const cors = require('cors');
-const {
-	linearConversion,
-	checkInternetConnection,
-	checkSystemHealth,
-} = require('./src/helpers');
+const { linearConversion } = require('./src/helpers');
 const db = require('./src/models');
 const demo = 0;
 const { ProfileUtils, ProfileManager } = require('./profile_manager');
 const dayjs = require('dayjs');
 let server = http.Server(app);
 const bodyParser = require('body-parser');
+const exporter = require('highcharts-export-server');
 
 const connections = []; // view soket bağlantılarının tutulduğu array
 let isWorking = 0;
 let isConnectedPLC = 0;
 let sensorCalibrationData = {}; // Object to store all sensor calibration data
-let demoMode = 1;
+let demoMode = 0;
 
-// Insert default sensor data after sync
-async function insertDefaultSensorData() {
-	try {
-		// Default sensor configurations
-		const defaultSensors = [
-			{
-				sensorID: 1,
-				sensorName: 'pressure',
-				sensorText: 'Pressure',
-				sensorMemory: 0,
-				sensorSymbol: 'bar',
-				sensorOffset: 0,
-				sensorLowerLimit: 0,
-				sensorUpperLimit: 2.5,
-				sensorAnalogUpper: 16383,
-				sensorAnalogLower: 3356,
-				sensorDecimal: 2,
-			},
-			{
-				sensorID: 2,
-				sensorName: 'temperature',
-				sensorText: 'Temperature',
-				sensorMemory: 0,
-				sensorSymbol: '°C',
-				sensorOffset: 0,
-				sensorLowerLimit: -40,
-				sensorUpperLimit: 120,
-				sensorAnalogUpper: 16383,
-				sensorAnalogLower: 0,
-				sensorDecimal: 1,
-			},
-			{
-				sensorID: 3,
-				sensorName: 'humidity',
-				sensorText: 'Humidity',
-				sensorMemory: 0,
-				sensorSymbol: '%',
-				sensorOffset: 0,
-				sensorLowerLimit: 0,
-				sensorUpperLimit: 100,
-				sensorAnalogUpper: 16383,
-				sensorAnalogLower: 0,
-				sensorDecimal: 0,
-			},
-			{
-				sensorID: 4,
-				sensorName: 'o2',
-				sensorText: 'O2',
-				sensorMemory: 0,
-				sensorSymbol: '%',
-				sensorOffset: 0,
-				sensorLowerLimit: 0,
-				sensorUpperLimit: 100,
-				sensorAnalogUpper: 16383,
-				sensorAnalogLower: 3224,
-				sensorDecimal: 1,
-			},
-		];
+db.sequelize.sync({ force: true });
 
-		// Insert default sensors
-		for (const sensorData of defaultSensors) {
-			await db.sensors.create(sensorData);
-		}
-
-		console.log('Default sensor data inserted successfully');
-	} catch (error) {
-		console.error('Error inserting default sensor data:', error);
-	}
-}
-
-// Initialize database and start application
-(async () => {
-	await db.sequelize.sync({ force: true });
-	await insertDefaultSensorData();
-	init();
-})();
+init();
 const allRoutes = require('./src/routes');
 
 let sensorData = {};
@@ -215,16 +139,15 @@ async function init() {
 		socket = io.connect('http://localhost:4000', { reconnect: true });
 		socket.on('connect', function () {
 			console.log('Connected to server');
-			if (demoMode == 0) {
-				doorOpen();
-				compValve(0);
-				decompValve(0);
-				sessionStartBit(0);
+			doorOpen();
+			compValve(0);
+			decompValve(0);
+			sessionStartBit(0);
 
-				setInterval(() => {
-					liveBit();
-				}, 3000);
-			}
+			setInterval(() => {
+				liveBit();
+			}, 3000);
+
 			//socket.emit('writeRegister', JSON.stringify({address: "R03904", value: 8000}));
 		});
 		socket.on('disconnect', function () {
@@ -236,7 +159,7 @@ async function init() {
 			}
 			console.log('Received message:', data);
 			const dataObject = JSON.parse(data);
-			console.log('length', dataObject.data.length);
+			//console.log("length",dataObject.data.length);
 			if (dataObject.data.length > 1) {
 				sessionStatus.doorSensorStatus = dataObject.data[10];
 
@@ -2119,19 +2042,3 @@ const quickProfile = ProfileUtils.createQuickProfile([
 	[sessionStatus.cikisSuresi, 0, 'air'],
 ]);
 sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
-
-setInterval(async () => {
-	try {
-		const connection = await checkInternetConnection();
-		//console.log(connection);
-		if (connection.isConnected) {
-			console.log('Internet bağlantısı var.');
-			const health = await checkSystemHealth('HC-001');
-			console.log(health);
-		} else {
-			console.log('Internet bağlantısı yok.');
-		}
-	} catch (error) {
-		console.log(error);
-	}
-}, 10000);
