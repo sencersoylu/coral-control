@@ -30,6 +30,15 @@ let sensorData = {};
 
 let o2Timer = null;
 
+// O2 Kalibrasyon verilerini saklamak için obje
+let o2CalibrationData = {
+	point0: { raw: 3224, percentage: 0 }, // %0 O2 için analog değer
+	point21: { raw: 8000, percentage: 21 }, // %21 O2 için analog değer (varsayılan)
+	point100: { raw: 16383, percentage: 100 }, // %100 O2 için analog değer
+	isCalibrated: false,
+	lastCalibrationDate: null,
+};
+
 let socket = null;
 app.use(cors());
 app.use(bodyParser.json());
@@ -174,7 +183,10 @@ async function init() {
 				sessionStatus.pressure = sensorData['pressure'];
 				sessionStatus.main_fsw = sensorData['pressure'] * 33.4;
 
-				sensorData['o2'] = 21.1;
+				// O2 sensörü için gerçek analog değeri oku (dataObject.data[2] varsayıyoruz)
+				const o2RawValue = dataObject.data[2] || 8000; // Eğer veri yoksa varsayılan değer
+				sensorData.o2RawValue = o2RawValue; // Ham değeri sakla
+				sensorData['o2'] = calculateO2Percentage(o2RawValue);
 
 				sensorData['temperature'] = linearConversion(
 					sensorCalibrationData['temperature'].sensorLowerLimit,
@@ -848,7 +860,10 @@ function read() {
 			}
 
 			// Çıkış durumu
-			if (sessionStatus.cikis == 1) decompValve(90);
+			if (sessionStatus.cikis == 1) {
+				compValve(0);
+				decompValve(90);
+			}
 
 			// Yüksek oksijen kontrolü
 			if (sessionStatus.higho == 1 && sessionStatus.ventil != 1) {
@@ -1026,7 +1041,9 @@ function read_demo() {
 		}
 
 		// Simulate other sensor data
-		sensorData['o2'] = 21.1;
+		const o2RawValue = 8000 + (Math.random() * 200 - 100); // Simüle edilmiş O2 analog değeri
+		sensorData.o2RawValue = o2RawValue; // Ham değeri sakla
+		sensorData['o2'] = calculateO2Percentage(o2RawValue);
 		sensorData['temperature'] = 22.5 + (Math.random() * 2 - 1); // 21.5-23.5°C
 		sensorData['humidity'] = 45 + (Math.random() * 10 - 5); // 40-50%
 
@@ -2042,3 +2059,208 @@ const quickProfile = ProfileUtils.createQuickProfile([
 	[sessionStatus.cikisSuresi, 0, 'air'],
 ]);
 sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
+
+// ============================================================================
+// O2 KALİBRASYON FONKSİYONLARI
+// ============================================================================
+
+/**
+ * 3 noktalı O2 kalibrasyonu yapan fonksiyon
+ * @param {number} rawValue - Sensörden okunan analog değer
+ * @return {number} - Kalibrasyon sonucu O2 yüzdesi
+ */
+function calculateO2Percentage(rawValue) {
+	// Kalibrasyon yapılmamışsa basit lineer hesaplama yap
+	if (!o2CalibrationData.isCalibrated) {
+		return linearConversion(
+			0,
+			100, // O2 yüzdesi aralığı
+			o2CalibrationData.point0.raw, // 0% için analog değer
+			o2CalibrationData.point100.raw, // 100% için analog değer
+			rawValue,
+			1 // 1 ondalık basamak
+		);
+	}
+
+	// 3 noktalı kalibrasyon hesaplaması
+	const { point0, point21, point100 } = o2CalibrationData;
+
+	// Hangi bölgede olduğunu belirle
+	if (rawValue <= point21.raw) {
+		// 0% - 21% arası
+		return linearConversion(
+			point0.percentage,
+			point21.percentage,
+			point0.raw,
+			point21.raw,
+			rawValue,
+			1
+		);
+	} else {
+		// 21% - 100% arası
+		return linearConversion(
+			point21.percentage,
+			point100.percentage,
+			point21.raw,
+			point100.raw,
+			rawValue,
+			1
+		);
+	}
+}
+
+/**
+ * O2 sensörü kalibrasyon noktası ayarlama
+ * @param {string} point - Kalibrasyon noktası ('0', '21', '100')
+ * @param {number} rawValue - Sensörden okunan analog değer
+ * @param {number} actualPercentage - Gerçek O2 yüzdesi
+ */
+function setO2CalibrationPoint(point, rawValue, actualPercentage) {
+	if (point === '0') {
+		o2CalibrationData.point0.raw = rawValue;
+		o2CalibrationData.point0.percentage = actualPercentage || 0;
+	} else if (point === '21') {
+		o2CalibrationData.point21.raw = rawValue;
+		o2CalibrationData.point21.percentage = actualPercentage || 21;
+	} else if (point === '100') {
+		o2CalibrationData.point100.raw = rawValue;
+		o2CalibrationData.point100.percentage = actualPercentage || 100;
+	}
+
+	console.log(`O2 Kalibrasyon Noktası %${point} ayarlandı:`, {
+		raw: rawValue,
+		percentage: actualPercentage,
+	});
+}
+
+/**
+ * O2 kalibrasyonunu tamamla
+ * Tüm 3 nokta ayarlandıktan sonra çağrılır
+ */
+function completeO2Calibration() {
+	// Kalibrasyon noktalarının doğruluğunu kontrol et
+	const { point0, point21, point100 } = o2CalibrationData;
+
+	if (point0.raw >= point21.raw || point21.raw >= point100.raw) {
+		console.error('Hata: O2 kalibrasyon değerleri mantıksız sıralamada!');
+		return false;
+	}
+
+	o2CalibrationData.isCalibrated = true;
+	o2CalibrationData.lastCalibrationDate = new Date();
+
+	console.log('O2 Kalibrasyonu tamamlandı:', o2CalibrationData);
+	return true;
+}
+
+/**
+ * O2 kalibrasyonunu sıfırla
+ */
+function resetO2Calibration() {
+	o2CalibrationData.point0 = { raw: 3224, percentage: 0 };
+	o2CalibrationData.point21 = { raw: 8000, percentage: 21 };
+	o2CalibrationData.point100 = { raw: 16383, percentage: 100 };
+	o2CalibrationData.isCalibrated = false;
+	o2CalibrationData.lastCalibrationDate = null;
+
+	console.log('O2 Kalibrasyonu sıfırlandı');
+}
+
+/**
+ * Mevcut sensör değerinden %100 O2 değerini hesapla
+ * %21 sensör okumasından %100 değerini tahmin eder
+ * @param {number} currentRawValue - Şu anki sensör değeri (yaklaşık %21)
+ * @return {number} - Tahmini %100 O2 için gereken analog değer
+ */
+function calculateO2Full(currentRawValue) {
+	// %21'den %100'e doğrusal genişletme
+	// Formül: (100 / 21) * currentValue - offset
+	const ratio = 100 / 21;
+	const estimatedFullValue = currentRawValue * ratio;
+
+	// Sensör üst limiti kontrolü
+	const maxValue = 16383; // 14-bit ADC maksimum değeri
+	const calculatedValue = Math.min(estimatedFullValue, maxValue);
+
+	console.log(
+		`%21 değer: ${currentRawValue} -> Tahmini %100 değer: ${calculatedValue.toFixed(
+			0
+		)}`
+	);
+
+	return Math.round(calculatedValue);
+}
+
+/**
+ * O2 sensörü gösterim fonksiyonu
+ * Sensör durumu ve kalibrasyon bilgilerini döndürür
+ * @return {object} - O2 sensörü durum bilgileri
+ */
+function getO2SensorStatus() {
+	const currentRawValue = sensorData.o2RawValue || 8000; // Ham değer
+	const currentPercentage = sensorData['o2'] || 21.0; // Hesaplanmış yüzde
+
+	return {
+		currentPercentage: currentPercentage,
+		currentRawValue: currentRawValue,
+		calibrationData: o2CalibrationData,
+		estimatedFullO2: calculateO2Full(currentRawValue),
+		isCalibrated: o2CalibrationData.isCalibrated,
+		lastCalibration: o2CalibrationData.lastCalibrationDate,
+	};
+}
+
+/**
+ * O2 kalibrasyon menüsü için yardımcı fonksiyon
+ * Kalibrasyon adımlarını yönlendirir
+ */
+function performO2CalibrationStep(step, measuredPercentage = null) {
+	const currentRawValue = sensorData.o2RawValue || 8000;
+
+	switch (step) {
+		case 'step1_zero':
+			// Adım 1: %0 kalibrasyonu (Nitrogen ortamı)
+			setO2CalibrationPoint('0', currentRawValue, 0);
+			return {
+				success: true,
+				message: '%0 O2 kalibrasyonu tamamlandı',
+				nextStep: 'step2_air',
+			};
+
+		case 'step2_air':
+			// Adım 2: %21 kalibrasyonu (Normal hava)
+			setO2CalibrationPoint('21', currentRawValue, measuredPercentage || 21);
+			return {
+				success: true,
+				message: '%21 O2 kalibrasyonu tamamlandı',
+				nextStep: 'step3_pure',
+				estimatedPureO2: calculateO2Full(currentRawValue),
+			};
+
+		case 'step3_pure':
+			// Adım 3: %100 kalibrasyonu (Saf oksijen)
+			setO2CalibrationPoint('100', currentRawValue, measuredPercentage || 100);
+			const success = completeO2Calibration();
+			return {
+				success: success,
+				message: success
+					? 'O2 kalibrasyonu başarıyla tamamlandı!'
+					: 'Kalibrasyon hatası!',
+				nextStep: 'completed',
+			};
+
+		default:
+			return {
+				success: false,
+				message: 'Geçersiz kalibrasyon adımı',
+				nextStep: 'step1_zero',
+			};
+	}
+}
+
+// Global olarak erişilebilir hale getir
+global.o2CalibrationData = o2CalibrationData;
+global.calculateO2Percentage = calculateO2Percentage;
+global.getO2SensorStatus = getO2SensorStatus;
+global.performO2CalibrationStep = performO2CalibrationStep;
+global.resetO2Calibration = resetO2Calibration;
