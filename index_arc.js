@@ -17,12 +17,13 @@ const dayjs = require('dayjs');
 let server = http.Server(app);
 const bodyParser = require('body-parser');
 const SensorCalibration = require('./o2_calibration');
+const { sendCommand } = require('./src/ws/client');
 
 const connections = []; // view soket bağlantılarının tutulduğu array
 let isWorking = 0;
 let isConnectedPLC = 0;
 let sensorCalibrationData = {}; // Object to store all sensor calibration data
-let demoMode = 1;
+let demoMode = 0;
 
 // Insert default sensor data after sync
 async function insertDefaultSensorData() {
@@ -81,6 +82,32 @@ async function insertDefaultSensorData() {
 				sensorAnalogLower: 3224,
 				sensorDecimal: 1,
 			},
+			{
+				sensorID: 5,
+				sensorName: 'air_pressure',
+				sensorText: 'Air Pressure',
+				sensorMemory: 0,
+				sensorSymbol: 'bar',
+				sensorOffset: 0,
+				sensorLowerLimit: 0,
+				sensorUpperLimit: 16,
+				sensorAnalogUpper: 16383,
+				sensorAnalogLower: 3224,
+				sensorDecimal: 1,
+			},
+			{
+				sensorID: 6,
+				sensorName: 'o2_pressure',
+				sensorText: 'O2 Pressure',
+				sensorMemory: 0,
+				sensorSymbol: '°C',
+				sensorOffset: 0,
+				sensorLowerLimit: 0,
+				sensorUpperLimit: 16,
+				sensorAnalogUpper: 16383,
+				sensorAnalogLower: 3224,
+				sensorDecimal: 1,
+			},
 		];
 
 		// Insert default sensors
@@ -113,6 +140,8 @@ let o2CalibrationData = {
 	point100: { raw: 16383, percentage: 100 }, // %100 O2 için analog değer
 	isCalibrated: false,
 	lastCalibrationDate: null,
+	o2AlarmValuePercentage: 24,
+	o2AlarmOn: false,
 };
 
 // O2 sensör kalibrasyon instance'ı
@@ -151,7 +180,7 @@ let sessionStatus = {
 	diffrencesayac: 0,
 	higho: 0,
 	highoc: 0,
-	higho2: 0,
+	higho2: false,
 	pauseTime: 0,
 	starttime: 0,
 	pausetime: 0,
@@ -162,6 +191,7 @@ let sessionStatus = {
 	doorSensorStatus: 0,
 	doorStatus: 0,
 	pressure: 0,
+	patientWarning: false,
 
 	o2: 0,
 	bufferdifference: [],
@@ -178,7 +208,7 @@ let sessionStatus = {
 	chamberStatus: 1,
 	chamberStatusText: '',
 	chamberStatusTime: null,
-	setDerinlik: 0,
+	setDerinlik: 1,
 	dalisSuresi: 0,
 	cikisSuresi: 0,
 	toplamSure: 0,
@@ -193,7 +223,9 @@ let sessionStatus = {
 	oksijen: 0,
 	oksijenBaslangicZamani: 0,
 	oksijenBitisZamani: 0,
-	profileSteps: [],
+	speed: 1,
+	highHumidity: false,
+	humidityAlarmLevel: 60,
 };
 
 // Make sessionStatus globally accessible
@@ -233,7 +265,7 @@ async function init() {
 		socket.on('connect', function () {
 			console.log('Connected to server');
 			if (demoMode == 0) {
-				doorOpen();
+				//doorOpen();
 				compValve(0);
 				decompValve(0);
 				sessionStartBit(0);
@@ -258,6 +290,15 @@ async function init() {
 			if (dataObject.data.length > 1) {
 				sessionStatus.doorSensorStatus = dataObject.data[10];
 
+				if (
+					sessionStatus.patientWarning == false &&
+					sessionStatus.doorSensorStatus == 1
+				) {
+					socket.emit('writeBit', { register: 'M0200', value: 0 });
+					alarmSet('patientWarning', 'Patient Warning', 0);
+					sessionStatus.patientWarning = true;
+				}
+
 				sensorData['pressure'] = linearConversion(
 					sensorCalibrationData['pressure'].sensorLowerLimit,
 					sensorCalibrationData['pressure'].sensorUpperLimit,
@@ -268,6 +309,8 @@ async function init() {
 				);
 				sessionStatus.pressure = sensorData['pressure'];
 				sessionStatus.main_fsw = sensorData['pressure'] * 33.4;
+				//console.log('pressure',sessionStatus.pressure, dataObject.data[1]);
+				//console.log(sensorData);
 
 				// O2 sensörü için gerçek analog değeri oku (dataObject.data[2] varsayıyoruz)
 				const o2RawValue = dataObject.data[2] || 8000; // Eğer veri yoksa varsayılan değer
@@ -338,6 +381,49 @@ async function init() {
 			console.log('chamberControl', data);
 			const dt = data;
 			console.log(dt);
+			// Remote command bridge to signaling server
+			if (dt && dt.type === 'remoteCommand') {
+				const mapCmd = (cmd) =>
+					cmd === 'play'
+						? 'play_door_close'
+						: cmd === 'stop'
+						? 'stop_effect'
+						: cmd;
+				const { to, cmd, url, my, timeoutMs } = dt.data || {};
+				sendCommand({
+					url: url || process.env.SIGNALING_URL || 'ws://192.168.1.12:8080/ws',
+					my: my || process.env.MY_ID || 'server-1',
+					to: to || process.env.TO_ID || 'raspi-1',
+					command: cmd || 'play',
+					mapped: mapCmd(cmd || 'play'),
+					timeoutMs: timeoutMs || 2000,
+				})
+					.then((result) => {
+						console.log('remoteCommand result:', result);
+						try {
+							socket.emit('chamberControl', {
+								type: 'remoteCommandResult',
+								data: result,
+							});
+						} catch {}
+					})
+					.catch((err) => {
+						console.error(
+							'remoteCommand error:',
+							err && err.message ? err.message : err
+						);
+						try {
+							socket.emit('chamberControl', {
+								type: 'remoteCommandResult',
+								data: {
+									ok: false,
+									error: err && err.message ? err.message : String(err),
+								},
+							});
+						} catch {}
+					});
+				return;
+			}
 			if (dt.type == 'alarm') {
 				if (
 					dt.data &&
@@ -366,8 +452,7 @@ async function init() {
 				sessionStatus.cikisSuresi = cikisSuresi;
 				sessionStatus.toplamSure = dt.data.toplamSure;
 				sessionStatus.setDerinlik = dt.data.setDerinlik;
-
-				console.log(
+				sessionStatus.console.log(
 					'Seans Baslat : ',
 					sessionStatus.dalisSuresi,
 					'Cikis Sure : ',
@@ -382,33 +467,39 @@ async function init() {
 					sessionStatus.toplamSure -
 					(sessionStatus.dalisSuresi + sessionStatus.cikisSuresi);
 
-				// Create alternating oxygen/air treatment segments
-				const safeTreatmentDuration = Math.max(
-					0,
-					Number.isFinite(treatmentDuration) ? treatmentDuration : 0
+				let treatmentSegments = createAlternatingTreatmentProfile(
+					treatmentDuration,
+					sessionStatus.setDerinlik
 				);
-				const treatmentSegments = createAlternatingTreatmentProfile(
-					safeTreatmentDuration,
-					sessionStatus.setDerinlik,
-					5,
-					15
-				);
+				if (sessionStatus.toplamSure == 80) {
+					treatmentSegments = [
+						[15, sessionStatus.setDerinlik, 'o'],
+						[5, sessionStatus.setDerinlik, 'air'],
+						[20, sessionStatus.setDerinlik, 'o'],
+						[5, sessionStatus.setDerinlik, 'air'],
+						[15, sessionStatus.setDerinlik, 'o'],
+					];
+				} else if (sessionStatus.toplamSure == 110) {
+					treatmentSegments = [
+						[20, sessionStatus.setDerinlik, 'o'],
+						[5, sessionStatus.setDerinlik, 'air'],
+						[20, sessionStatus.setDerinlik, 'o'],
+						[5, sessionStatus.setDerinlik, 'air'],
+						[20, sessionStatus.setDerinlik, 'o'],
+						[5, sessionStatus.setDerinlik, 'air'],
+						[15, sessionStatus.setDerinlik, 'o'],
+					];
+				}
 
 				// Build complete profile with descent, alternating treatment, and ascent
-				const setProfileRaw = [
+				const setProfile = [
 					[sessionStatus.dalisSuresi, sessionStatus.setDerinlik, 'air'], // Descent phase
 					...treatmentSegments, // Alternating oxygen/air treatment phases
 					[sessionStatus.cikisSuresi, 0, 'air'], // Ascent phase
 				];
 
-				// Filter out invalid/non-positive durations
-				const setProfile = setProfileRaw.filter(
-					(seg) => Array.isArray(seg) && Number.isFinite(seg[0]) && seg[0] > 0
-				);
-
 				const quickProfile = ProfileUtils.createQuickProfile(setProfile);
 				sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
-				sessionStatus.profileSteps = setProfile;
 
 				// Export profile to JSON file
 				const fs = require('fs');
@@ -431,9 +522,12 @@ async function init() {
 				sessionStatus.pauseTime = sessionStatus.zaman;
 				sessionStatus.pauseDepth = sensorData['pressure'];
 				compValve(0);
-				decompValve(0);
+				decompValve(35);
 				compValve(0);
-				decompValve(0);
+				setTimeout(() => {
+					decompValve(0);
+				}, 15000);
+
 				console.log(
 					'sessionPause',
 					sessionStatus.pauseTime,
@@ -515,6 +609,82 @@ async function init() {
 				} else if (dt.data.direction == 'backward' && dt.data.engage == false) {
 					socket.emit('writeBit', { register: 'M0303', value: 0 });
 				}
+			} else if (dt.type == 'duration') {
+				console.log('duration', dt.data.duration);
+				sessionStatus.toplamSure = dt.data.duration;
+
+				let dalisSuresi = 0;
+				let cikisSuresi = 0;
+
+				if (sessionStatus.speed == 1) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
+				} else if (sessionStatus.speed == 2) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+				} else if (sessionStatus.speed == 3) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+				}
+
+				sessionStatus.dalisSuresi = dalisSuresi;
+				sessionStatus.cikisSuresi = cikisSuresi;
+
+				createChart();
+			} else if (dt.type == 'pressure') {
+				sessionStatus.setDerinlik = dt.data.pressure;
+
+				let dalisSuresi = 0;
+				let cikisSuresi = 0;
+
+				if (sessionStatus.speed == 1) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
+				} else if (sessionStatus.speed == 2) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+				} else if (sessionStatus.speed == 3) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+				}
+
+				sessionStatus.dalisSuresi = dalisSuresi;
+				sessionStatus.cikisSuresi = cikisSuresi;
+
+				createChart();
+			} else if (dt.type == 'speed') {
+				console.log('speed', dt.data.speed);
+				sessionStatus.speed = dt.data.speed;
+
+				let dalisSuresi = 0;
+				let cikisSuresi = 0;
+
+				if (dt.data.speed == 1) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
+				} else if (dt.data.speed == 2) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+				} else if (dt.data.speed == 3) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+				}
+
+				sessionStatus.dalisSuresi = dalisSuresi;
+				sessionStatus.cikisSuresi = cikisSuresi;
+				sessionStatus.speed = dt.data.speed;
+				createChart();
+
+				console.log(
+					'Seans Baslat : ',
+					sessionStatus.dalisSuresi,
+					'Cikis Sure : ',
+					sessionStatus.cikisSuresi,
+					'Toplam Sure : ',
+					sessionStatus.toplamSure,
+					'Derinlik : ',
+					sessionStatus.setDerinlik
+				);
 			}
 		});
 
@@ -534,6 +704,8 @@ async function init() {
 				cikisSuresi = Math.round(dt.setDerinlik / 2);
 			}
 
+			sessionStatus.speed = dt.dalisSuresi;
+
 			sessionStatus.dalisSuresi = dalisSuresi;
 			sessionStatus.cikisSuresi = cikisSuresi;
 			sessionStatus.toplamSure = dt.toplamSure;
@@ -542,18 +714,22 @@ async function init() {
 
 			console.log(sessionStatus.dalisSuresi, sessionStatus.setDerinlik, 'air');
 
-			const profile = new ProfileManager();
-
-			const quickProfile = ProfileUtils.createQuickProfile([
+			const middleDuration =
+				sessionStatus.toplamSure -
+				(sessionStatus.dalisSuresi + sessionStatus.cikisSuresi);
+			const safeMiddle = Math.max(
+				0,
+				Number.isFinite(middleDuration) ? middleDuration : 0
+			);
+			const setProfileRaw = [
 				[sessionStatus.dalisSuresi, sessionStatus.setDerinlik, 'air'],
-				[
-					sessionStatus.toplamSure -
-						(sessionStatus.dalisSuresi + sessionStatus.cikisSuresi),
-					sessionStatus.setDerinlik,
-					'air',
-				],
+				[safeMiddle, sessionStatus.setDerinlik, 'air'],
 				[sessionStatus.cikisSuresi, 0, 'air'],
-			]);
+			];
+			const setProfile = setProfileRaw.filter(
+				(seg) => Array.isArray(seg) && Number.isFinite(seg[0]) && seg[0] > 0
+			);
+			const quickProfile = ProfileUtils.createQuickProfile(setProfile);
 			console.log(quickProfile);
 			sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
 
@@ -665,6 +841,27 @@ setInterval(() => {
 
 	if (demoMode == 0) {
 		read();
+
+		if (
+			sensorData['o2'] > o2CalibrationData.o2AlarmValuePercentage &&
+			!sessionStatus.higho2
+		) {
+			alarmSet('highO2', 'High O₂ level, ventilate the chamber.', 0);
+			sessionStatus.higho2 = true;
+			setTimeout(() => {
+				sessionStatus.higho2 = false;
+			}, 60000);
+		}
+		if (
+			sensorData['humidity'] > sessionStatus.humidityAlarmLevel &&
+			!sessionStatus.highHumidity
+		) {
+			alarmSet('highHumidity', 'High Humidity, ventilate the chamber.', 0);
+			sessionStatus.highHumidity = true;
+			setTimeout(() => {
+				sessionStatus.highHumidity = false;
+			}, 60000);
+		}
 	} else {
 		sensorData['o2'] = 21.1;
 		sensorData['temperature'] = 22.5 + (Math.random() * 2 - 1); // 21.5-23.5°C
@@ -680,10 +877,10 @@ function read() {
 	// Sensor değerlerini al
 
 	socket.emit('sensorData', {
-		pressure: Number(sensorData['pressure'].toFixed(2)) || 0,
-		o2: Number(sensorData['o2'].toFixed(0)) || 0,
-		temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
-		humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
+		pressure: sensorData['pressure'],
+		o2: sensorData['o2'],
+		temperature: sensorData['temperature'],
+		humidity: sensorData['humidity'],
 		sessionStatus: sessionStatus,
 		doorStatus: sessionStatus.doorStatus,
 	});
@@ -697,20 +894,39 @@ function read() {
 		sessionStatus.grafikdurum
 	);
 
+	console.log(
+		'Pressure : ',
+		sensorData['pressure'],
+		'O2 : ',
+		sensorData['o2'],
+		'Temperature : ',
+		sensorData['temperature'],
+		'Humidity : ',
+		sensorData['humidity']
+	);
+
+	// Ensure profile is always an array before any indexed access
+	if (!Array.isArray(sessionStatus.profile)) {
+		sessionStatus.profile = [];
+	}
+
 	if (sessionStatus.status > 0) sessionStatus.zaman++;
-	if (sessionStatus.status == 1 && sessionStatus.doorStatus == 0) {
-		console.log('door closing');
+	if (sessionStatus.status == 1 && sessionStatus.zaman == 1) {
+		//console.log('door closing');
 		alarmSet('sessionStarting', 'Session Starting', 0);
-		doorClose();
+		sendCommand({
+			url: 'ws://192.168.77.100:8080/ws',
+			my: 'server-1',
+			to: 'raspi-1',
+			command: 'start_session',
+			mapped: 'start_session',
+		});
+		//doorClose();
 		decompValve(0);
 	}
 
 	// Sistem aktifse kontrol et
-	if (
-		sessionStatus.status > 0 &&
-		sessionStatus.doorStatus == 1 &&
-		sessionStatus.zaman > 5
-	) {
+	if (sessionStatus.status > 0 && sessionStatus.zaman > 5) {
 		// Hedef basıncı belirle
 		if (
 			sessionStatus.profile.length > sessionStatus.zaman &&
@@ -742,8 +958,8 @@ function read() {
 
 		// Check if current and next profile points exist
 		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1])
+			sessionStatus.profile[sessionStatus.zaman] &&
+			sessionStatus.profile[sessionStatus.zaman + 1]
 		) {
 			if (
 				sessionStatus.profile[sessionStatus.zaman][1] >
@@ -763,529 +979,419 @@ function read() {
 			sessionStatus.grafikdurum = 0; // Default to descent when at end
 		}
 
-		// Profil adımı değişimine göre oksijen durumunu güncelle
 		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-			sessionStatus.profile[sessionStatus.zaman + 1].length > 2
+			sessionStatus.profile[sessionStatus.zaman] &&
+			sessionStatus.profile[sessionStatus.zaman + 1] &&
+			sessionStatus.profile[sessionStatus.zaman][2] == 'air' &&
+			sessionStatus.profile[sessionStatus.zaman + 1][2] == 'o' &&
+			sessionStatus.oksijen == 0
 		) {
-			if (
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-				sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-				sessionStatus.profile[sessionStatus.zaman + 1].length > 2
-			) {
-				if (
-					Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-					sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-					Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-					sessionStatus.profile[sessionStatus.zaman + 1].length > 2
-				) {
-					console.log(
-						sessionStatus.profile[sessionStatus.zaman][2],
-						sessionStatus.profile[sessionStatus.zaman + 1][2],
-						sessionStatus.oksijen
-					);
-				}
-			}
-
-			if (
-				sessionStatus.profile[sessionStatus.zaman][2] == 'air' &&
-				sessionStatus.profile[sessionStatus.zaman + 1][2] == 'o' &&
-				sessionStatus.oksijen == 0
-			) {
-				sessionStatus.oksijen = 1;
-				alarmSet(
-					'oxygenBreak',
-					'Treatment Starting. Please wear your mask.',
-					0
-				);
-			} else if (
-				sessionStatus.profile[sessionStatus.zaman][2] == 'o' &&
-				sessionStatus.profile[sessionStatus.zaman + 1][2] == 'air' &&
-				sessionStatus.oksijen == 1
-			) {
-				sessionStatus.oksijen = 0;
-				alarmSet(
-					'oxygenBreak',
-					'Please take off your mask. Oxygen Break Time.',
-					0
-				);
-			}
-		}
-
-		// Oksijen molası kontrolü - Düz grafik durumunda
-		if (
-			sessionStatus.grafikdurum === 2 &&
-			sessionStatus.otomanuel == 0 &&
-			sessionStatus.status == 1
+			sessionStatus.oksijen = 1;
+			alarmSet('oxygenBreak', 'Oxygen Starting. Put the mask on.', 0);
+			sendCommand({
+				url: 'ws://192.168.77.100:8080/ws',
+				my: 'server-1',
+				to: 'raspi-1',
+				command: 'puton_mask',
+				mapped: 'puton_mask',
+			});
+		} else if (
+			sessionStatus.lastdurum === 2 &&
+			sessionStatus.cikis == 0 &&
+			sessionStatus.grafikdurum == 0
 		) {
-			if (
-				sessionStatus.oksijen == 0 &&
-				sessionStatus.oksijenBaslangicZamani == 0 &&
-				sessionStatus.oksijenBitisZamani == 0
-			) {
-				sessionStatus.oksijen = 1;
-				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1;
-				sessionStatus.oksijenBitisZamani = sessionStatus.zaman + 20 * 60;
-				alarmSet(
-					'oxygenBreak',
-					'Treatment Starting. Please wear your mask.',
-					0
-				);
-
-				oxygenOpen();
-
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-			} else if (
-				sessionStatus.oksijen == 1 &&
-				sessionStatus.zaman >= sessionStatus.oksijenBitisZamani
-			) {
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-				sessionStatus.oksijen = 0;
-				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 5 * 60;
-				sessionStatus.oksijenBitisZamani = 0;
-				alarmSet(
-					'oxygenBreak',
-					'Please take off your mask. Oxygen Break Time.',
-					0
-				);
-				oxygenClose();
-			} else if (
-				sessionStatus.oksijen == 0 &&
-				sessionStatus.zaman >= sessionStatus.oksijenBaslangicZamani &&
-				sessionStatus.oksijenBitisZamani == 0
-			) {
-				sessionStatus.oksijen = 1;
-				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1;
-				sessionStatus.oksijenBitisZamani = sessionStatus.zaman + 20 * 60;
-				alarmSet('oxygenBreak', 'Please wear your mask.', 0);
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-				oxygenOpen();
-			}
-
+			sessionStatus.oksijen = 0;
+			sessionStatus.oksijenBaslangicZamani = 0;
+			sessionStatus.oksijenBitisZamani = 0;
+			alarmSet(
+				'treatmenFinished',
+				'Treatment Finished. Take the mask off. Decompression Starting.',
+				0
+			);
+			sendCommand({
+				url: 'ws://192.168.77.100:8080/ws',
+				my: 'server-1',
+				to: 'raspi-1',
+				command: 'deco_start',
+				mapped: 'deco_start',
+			});
 			console.log(
-				'oksijen',
+				'Değişti : oksijen',
 				sessionStatus.oksijen,
 				'oksijenBaslangicZamani',
 				sessionStatus.oksijenBaslangicZamani,
 				'oksijenBitisZamani',
 				sessionStatus.oksijenBitisZamani
 			);
-		} else {
-			// Düz durumdan çıkıldığında timer'ları sıfırla
-			if (
-				sessionStatus.lastdurum === 2 &&
-				sessionStatus.cikis == 0 &&
-				sessionStatus.grafikdurum == 0
-			) {
-				sessionStatus.oksijen = 0;
-				sessionStatus.oksijenBaslangicZamani = 0;
-				sessionStatus.oksijenBitisZamani = 0;
-				alarmSet(
-					'treatmenFinished',
-					'Treatment Finished. Please take off your mask. Decompression Starting.',
-					0
-				);
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-				oxygenClose();
-			}
-		}
-
-		// Check if step (adım) has changed
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			sessionStatus.adim !== sessionStatus.profile[sessionStatus.zaman][2]
+			oxygenClose();
+		} else if (
+			sessionStatus.profile[sessionStatus.zaman] &&
+			sessionStatus.profile[sessionStatus.zaman + 1] &&
+			sessionStatus.profile[sessionStatus.zaman][2] == 'o' &&
+			sessionStatus.profile[sessionStatus.zaman + 1][2] == 'air' &&
+			sessionStatus.oksijen == 1
 		) {
-			console.log(
-				'Step changed from',
-				sessionStatus.adim,
-				'to',
-				sessionStatus.profile[sessionStatus.zaman][2]
-			);
-			//alarmSet('stepChange', 'Step Changed', 0);
+			sessionStatus.oksijen = 0;
+
+			alarmSet('oxygenBreak', 'Oxygen Stopped. Take the mask off.', 0);
+
+			sendCommand({
+				url: 'ws://192.168.77.100:8080/ws',
+				my: 'server-1',
+				to: 'raspi-1',
+				command: 'takeoff_mask',
+				mapped: 'takeoff_mask',
+			});
+		}
+	} else {
+		// Düz durumdan çıkıldığında timer'ları sıfırla
+	}
+
+	// Check if step (adım) has changed
+	if (
+		sessionStatus.profile[sessionStatus.zaman] &&
+		sessionStatus.adim !== sessionStatus.profile[sessionStatus.zaman][2]
+	) {
+		console.log(
+			'Step changed from',
+			sessionStatus.adim,
+			'to',
+			sessionStatus.profile[sessionStatus.zaman][2]
+		);
+		//alarmSet('stepChange', 'Step Changed', 0);
+	}
+
+	// Adım kontrolü
+	if (
+		sessionStatus.grafikdurum != sessionStatus.lastdurum &&
+		sessionStatus.wait == 0
+	) {
+		sessionStatus.p2counter = 0;
+	}
+
+	if (sessionStatus.profile[sessionStatus.zaman]) {
+		sessionStatus.adim = sessionStatus.profile[sessionStatus.zaman][2];
+	}
+
+	// Gecikme kontrolü - Yükseliş sırasında hedef basınca ulaşılamadıysa
+	// if (sessionStatus.main_fsw < sessionStatus.maxadim[sessionStatus.adim] &&
+	//     sessionStatus.zaman == (sessionStatus.adimzaman[sessionStatus.adim] * 60 - 2) &&
+	//     sessionStatus.grafikdurum == 1 &&
+	//     sessionStatus.otomanuel == 0 ) {
+
+	//     sessionStatus.wait = 1;
+	//     sessionStatus.waitstarttime = sessionStatus.zaman;
+	//     sessionStatus.targetmax = sessionStatus.maxadim[sessionStatus.adim];
+	//     sessionStatus.counter = 0;
+	//     sessionStatus.tempadim = sessionStatus.adim;
+	// }
+
+	// // Gecikme kontrolü - İniş sırasında hedef basıncın üzerindeyse
+	// if (sessionStatus.main_fsw > sessionStatus.maxadim[sessionStatus.adim] &&
+	//     sessionStatus.zaman == (sessionStatus.adimzaman[sessionStatus.adim] * 60 - 2) &&
+	//     sessionStatus.grafikdurum == 0 &&
+	//     sessionStatus.otomanuel == 0 ) {
+
+	//     sessionStatus.wait = 2;
+	//     sessionStatus.waitstarttime = sessionStatus.zaman;
+	//     sessionStatus.targetmax = sessionStatus.maxadim[sessionStatus.adim];
+	//     sessionStatus.counter = 0;
+	//     sessionStatus.tempadim = sessionStatus.adim;
+	// }
+
+	// // Gecikme bitirme kontrolü
+	// if (sessionStatus.main_fsw > sessionStatus.targetmax - 0.5 && sessionStatus.wait == 1 && sessionStatus.counter != 0) {
+	//     sessionStatus.wait = 0;
+	//     sessionStatus.waitstoptime = sessionStatus.zaman;
+	//     sessionStatus.p2counter = 0;
+	//     //grafikupdate(sessionStatus.adim, sessionStatus.counter);
+	//     sessionStatus.adim = sessionStatus.tempadim + 1;
+	// }
+
+	// if (sessionStatus.main_fsw < sessionStatus.targetmax + 0.5 && sessionStatus.wait == 2 && sessionStatus.counter != 0) {
+	//     sessionStatus.wait = 0;
+	//     sessionStatus.p2counter = 0;
+	//     sessionStatus.waitstoptime = sessionStatus.zaman + 1;
+	//     //grafikupdate(sessionStatus.adim, sessionStatus.counter);
+	//     sessionStatus.adim = sessionStatus.tempadim - 1;
+	// }
+
+	// Gecikme sırasında hedefi güncelle
+	// if (sessionStatus.wait == 1 || sessionStatus.wait == 2) {
+	//     if (sessionStatus.wait == 2) sessionStatus.grafikdurum = 0;
+	//     sessionStatus.hedeflenen[sessionStatus.zaman + 1] = sessionStatus.targetmax;
+	//     sessionStatus.counter++;
+	// }
+
+	// Zaman hesaplamaları
+	var s = sessionStatus.zaman % 60;
+	var m = parseInt(sessionStatus.zaman / 60);
+
+	sessionStatus.p2counter++;
+
+	// Global değişkenleri güncelle
+	sessionStatus.fsw = sessionStatus.main_fsw;
+	sessionStatus.fswd = sessionStatus.main_fswd;
+
+	// Fark hesaplama
+	var difference =
+		parseFloat(sessionStatus.hedef) - parseFloat(sessionStatus.main_fsw);
+	sessionStatus.bufferdifference[sessionStatus.zaman] = difference;
+	sessionStatus.olcum.push(sessionStatus.main_fsw);
+
+	console.log('difference :', difference);
+
+	console.log(
+		'pressure :',
+		sessionStatus.pressure,
+		sessionStatus.fsw.toFixed(2)
+	);
+
+	// İlk basınç kaydı
+	if (sessionStatus.zaman == 1) {
+		sessionStatus.ilkbasinc = sessionStatus.fsw;
+	}
+
+	// Uyarı kontrolü
+	if (sessionStatus.zaman > 0) {
+		// Periyodik uyarılar
+		// if (sessionStatus.zaman % sessionStatus.sesliuyari == 0 && sessionStatus.uyaridurum == 0) {
+		//     showalert('Operator Shouldnt Away From The Panel !', 0);
+		//     sessionStatus.uyaridurum = 1;
+		// }
+		// if (sessionStatus.zaman % sessionStatus.goreseluyari == 0 && sessionStatus.uyaridurum == 0) {
+		//     showalert('Operator Shouldnt Away From The Panel !', 1);
+		//     sessionStatus.uyaridurum = 1;
+		// }
+
+		// Sapma uyarısı
+		if (Math.abs(sessionStatus.bufferdifference[sessionStatus.zaman]) > 5) {
+			sessionStatus.diffrencesayac++;
 		}
 
-		// Adım kontrolü
+		// if (sessionStatus.diffrencesayac > 10 && sessionStatus.otomanuel == 0 && (sessionStatus.alarmzaman + 300 < sessionStatus.zaman || sessionStatus.alarmzaman == 0)) {
+		//     alarmSet('deviation', 'Deviation ! Please Check The Compressor and Air Supply System.', 0);
+		//     sessionStatus.alarmzaman = sessionStatus.zaman;
+		//     sessionStatus.diffrencesayac = 0;
+		//     sessionStatus.uyaridurum = 1;
+		// }
+
+		// Otomatik kontrol
 		if (
-			sessionStatus.grafikdurum != sessionStatus.lastdurum &&
+			sessionStatus.otomanuel == 0 &&
+			sessionStatus.cikis == 0 &&
 			sessionStatus.wait == 0
 		) {
-			sessionStatus.p2counter = 0;
-		}
+			// O2/Hava kontrolü
 
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2
-		) {
-			sessionStatus.adim = sessionStatus.profile[sessionStatus.zaman][2];
-		}
+			// PID kontrolü için ortalama fark hesapla
+			var avgDifference =
+				(sessionStatus.bufferdifference[sessionStatus.zaman] +
+					sessionStatus.bufferdifference[sessionStatus.zaman - 1] +
+					sessionStatus.bufferdifference[sessionStatus.zaman - 2]) /
+				3;
 
-		// Gecikme kontrolü - Yükseliş sırasında hedef basınca ulaşılamadıysa
-		// if (sessionStatus.main_fsw < sessionStatus.maxadim[sessionStatus.adim] &&
-		//     sessionStatus.zaman == (sessionStatus.adimzaman[sessionStatus.adim] * 60 - 2) &&
-		//     sessionStatus.grafikdurum == 1 &&
-		//     sessionStatus.otomanuel == 0 ) {
+			console.log('avgDiff', avgDifference.toFixed(2));
 
-		//     sessionStatus.wait = 1;
-		//     sessionStatus.waitstarttime = sessionStatus.zaman;
-		//     sessionStatus.targetmax = sessionStatus.maxadim[sessionStatus.adim];
-		//     sessionStatus.counter = 0;
-		//     sessionStatus.tempadim = sessionStatus.adim;
-		// }
+			// Kompresör kontrolü
+			sessionStatus.pcontrol =
+				sessionStatus.comp_offset +
+				sessionStatus.comp_gain * difference +
+				sessionStatus.fsw / sessionStatus.comp_depth;
+			if (sessionStatus.pcontrol < sessionStatus.minimumvalve)
+				sessionStatus.pcontrol = sessionStatus.minimumvalve;
 
-		// // Gecikme kontrolü - İniş sırasında hedef basıncın üzerindeyse
-		// if (sessionStatus.main_fsw > sessionStatus.maxadim[sessionStatus.adim] &&
-		//     sessionStatus.zaman == (sessionStatus.adimzaman[sessionStatus.adim] * 60 - 2) &&
-		//     sessionStatus.grafikdurum == 0 &&
-		//     sessionStatus.otomanuel == 0 ) {
+			// Dekompresyon kontrolü
+			var control =
+				sessionStatus.decomp_offset -
+				sessionStatus.decomp_gain * difference +
+				sessionStatus.decomp_depth / sessionStatus.fsw;
 
-		//     sessionStatus.wait = 2;
-		//     sessionStatus.waitstarttime = sessionStatus.zaman;
-		//     sessionStatus.targetmax = sessionStatus.maxadim[sessionStatus.adim];
-		//     sessionStatus.counter = 0;
-		//     sessionStatus.tempadim = sessionStatus.adim;
-		// }
-
-		// // Gecikme bitirme kontrolü
-		// if (sessionStatus.main_fsw > sessionStatus.targetmax - 0.5 && sessionStatus.wait == 1 && sessionStatus.counter != 0) {
-		//     sessionStatus.wait = 0;
-		//     sessionStatus.waitstoptime = sessionStatus.zaman;
-		//     sessionStatus.p2counter = 0;
-		//     //grafikupdate(sessionStatus.adim, sessionStatus.counter);
-		//     sessionStatus.adim = sessionStatus.tempadim + 1;
-		// }
-
-		// if (sessionStatus.main_fsw < sessionStatus.targetmax + 0.5 && sessionStatus.wait == 2 && sessionStatus.counter != 0) {
-		//     sessionStatus.wait = 0;
-		//     sessionStatus.p2counter = 0;
-		//     sessionStatus.waitstoptime = sessionStatus.zaman + 1;
-		//     //grafikupdate(sessionStatus.adim, sessionStatus.counter);
-		//     sessionStatus.adim = sessionStatus.tempadim - 1;
-		// }
-
-		// Gecikme sırasında hedefi güncelle
-		// if (sessionStatus.wait == 1 || sessionStatus.wait == 2) {
-		//     if (sessionStatus.wait == 2) sessionStatus.grafikdurum = 0;
-		//     sessionStatus.hedeflenen[sessionStatus.zaman + 1] = sessionStatus.targetmax;
-		//     sessionStatus.counter++;
-		// }
-
-		// Zaman hesaplamaları
-		var s = sessionStatus.zaman % 60;
-		var m = parseInt(sessionStatus.zaman / 60);
-
-		sessionStatus.p2counter++;
-
-		// Global değişkenleri güncelle
-		sessionStatus.fsw = sessionStatus.main_fsw;
-		sessionStatus.fswd = sessionStatus.main_fswd;
-
-		// Fark hesaplama
-		var difference =
-			parseFloat(sessionStatus.hedef) - parseFloat(sessionStatus.main_fsw);
-		sessionStatus.bufferdifference[sessionStatus.zaman] = difference;
-		sessionStatus.olcum.push(sessionStatus.main_fsw);
-
-		console.log('difference :', difference);
-
-		console.log(
-			'pressure :',
-			sessionStatus.pressure,
-			sessionStatus.fsw.toFixed(2)
-		);
-
-		// İlk basınç kaydı
-		if (sessionStatus.zaman == 1) {
-			sessionStatus.ilkbasinc = sessionStatus.fsw;
-		}
-
-		// Uyarı kontrolü
-		if (sessionStatus.zaman > 0) {
-			// Periyodik uyarılar
-			// if (sessionStatus.zaman % sessionStatus.sesliuyari == 0 && sessionStatus.uyaridurum == 0) {
-			//     showalert('Operator Shouldnt Away From The Panel !', 0);
-			//     sessionStatus.uyaridurum = 1;
-			// }
-			// if (sessionStatus.zaman % sessionStatus.goreseluyari == 0 && sessionStatus.uyaridurum == 0) {
-			//     showalert('Operator Shouldnt Away From The Panel !', 1);
-			//     sessionStatus.uyaridurum = 1;
-			// }
-
-			// Sapma uyarısı
-			if (Math.abs(sessionStatus.bufferdifference[sessionStatus.zaman]) > 5) {
-				sessionStatus.diffrencesayac++;
+			// Vana kontrolü
+			if (sessionStatus.ventil == 0) {
+				if (sessionStatus.grafikdurum == 1) {
+					// Yükseliş
+					if (difference > 0.1) {
+						compValve(sessionStatus.pcontrol);
+						decompValve(0);
+					} else if (avgDifference < -0.6) {
+						compValve(sessionStatus.minimumvalve);
+						decompValve(0);
+					} else if (avgDifference < -1.5) {
+						compValve(0);
+						decompValve(0);
+					}
+				} else if (sessionStatus.grafikdurum == 2) {
+					// Düz
+					if (avgDifference > 0.1) {
+						compValve(sessionStatus.pcontrol);
+						if (sessionStatus.ventil != 1) decompValve(0);
+					} else if (avgDifference < -1) {
+						compValve(0);
+						decompValve(control);
+					} else {
+						compValve(0);
+						decompValve(0);
+					}
+				} else {
+					// İniş
+					compValve(0);
+					decompValve(Math.abs(control));
+				}
 			}
+		}
 
-			// if (sessionStatus.diffrencesayac > 10 && sessionStatus.otomanuel == 0 && (sessionStatus.alarmzaman + 300 < sessionStatus.zaman || sessionStatus.alarmzaman == 0)) {
-			//     alarmSet('deviation', 'Deviation ! Please Check The Compressor and Air Supply System.', 0);
-			//     sessionStatus.alarmzaman = sessionStatus.zaman;
-			//     sessionStatus.diffrencesayac = 0;
-			//     sessionStatus.uyaridurum = 1;
-			// }
-
-			// Otomatik kontrol
-			if (
-				sessionStatus.otomanuel == 0 &&
-				sessionStatus.cikis == 0 &&
-				sessionStatus.wait == 0
-			) {
-				// O2/Hava kontrolü
-
-				// PID kontrolü için ortalama fark hesapla
-				var avgDifference =
+		// Ventilasyon kontrolü
+		if (
+			(sessionStatus.ventil == 1 ||
+				sessionStatus.ventil == 2 ||
+				sessionStatus.ventil == 3) &&
+			sessionStatus.otomanuel == 0
+		) {
+			if (difference < 0 && difference > -0.3) {
+				sessionStatus.pcontrol = 5 * (sessionStatus.vanacikis / 9);
+			} else if (difference < 0.5 && difference > 0) {
+				sessionStatus.pcontrol = 2 * (sessionStatus.vanacikis / 3);
+			} else if (difference > 0.5) {
+				var avgDiff =
 					(sessionStatus.bufferdifference[sessionStatus.zaman] +
 						sessionStatus.bufferdifference[sessionStatus.zaman - 1] +
 						sessionStatus.bufferdifference[sessionStatus.zaman - 2]) /
 					3;
-
-				console.log('avgDiff', avgDifference.toFixed(2));
-
-				// Kompresör kontrolü
 				sessionStatus.pcontrol =
 					sessionStatus.comp_offset +
-					sessionStatus.comp_gain * difference +
+					sessionStatus.comp_gain * avgDiff +
 					sessionStatus.fsw / sessionStatus.comp_depth;
-				if (sessionStatus.pcontrol < sessionStatus.minimumvalve)
-					sessionStatus.pcontrol = sessionStatus.minimumvalve;
-
-				// Dekompresyon kontrolü
-				var control =
-					sessionStatus.decomp_offset -
-					sessionStatus.decomp_gain * difference +
-					sessionStatus.decomp_depth / sessionStatus.fsw;
-
-				// Vana kontrolü
-				if (sessionStatus.ventil == 0) {
-					if (sessionStatus.grafikdurum == 1) {
-						// Yükseliş
-						if (difference > 0.1) {
-							compValve(sessionStatus.pcontrol);
-							decompValve(0);
-						} else if (avgDifference < -0.6) {
-							compValve(sessionStatus.minimumvalve);
-							decompValve(0);
-						} else if (avgDifference < -1.5) {
-							compValve(0);
-							decompValve(0);
-						}
-					} else if (sessionStatus.grafikdurum == 2) {
-						// Düz
-						if (avgDifference > 0.1) {
-							compValve(sessionStatus.pcontrol);
-							if (sessionStatus.ventil != 1) decompValve(0);
-						} else if (avgDifference < -1) {
-							compValve(0);
-							decompValve(control);
-						} else {
-							compValve(0);
-							decompValve(0);
-						}
-					} else {
-						// İniş
-						compValve(0);
-						decompValve(Math.abs(control));
-					}
-				}
+				if (sessionStatus.pcontrol < 15) sessionStatus.pcontrol = 16;
 			}
-
-			// Ventilasyon kontrolü
-			if (
-				(sessionStatus.ventil == 1 ||
-					sessionStatus.ventil == 2 ||
-					sessionStatus.ventil == 3) &&
-				sessionStatus.otomanuel == 0
-			) {
-				if (difference < 0 && difference > -0.3) {
-					sessionStatus.pcontrol = 5 * (sessionStatus.vanacikis / 9);
-				} else if (difference < 0.5 && difference > 0) {
-					sessionStatus.pcontrol = 2 * (sessionStatus.vanacikis / 3);
-				} else if (difference > 0.5) {
-					var avgDiff =
-						(sessionStatus.bufferdifference[sessionStatus.zaman] +
-							sessionStatus.bufferdifference[sessionStatus.zaman - 1] +
-							sessionStatus.bufferdifference[sessionStatus.zaman - 2]) /
-						3;
-					sessionStatus.pcontrol =
-						sessionStatus.comp_offset +
-						sessionStatus.comp_gain * avgDiff +
-						sessionStatus.fsw / sessionStatus.comp_depth;
-					if (sessionStatus.pcontrol < 15) sessionStatus.pcontrol = 16;
-				}
-				compValve(sessionStatus.pcontrol);
-				decompValve(sessionStatus.vanacikis);
-			}
-
-			// Çıkış durumu
-			if (sessionStatus.cikis == 1) {
-				compValve(0);
-				decompValve(90);
-			}
-
-			// Yüksek oksijen kontrolü
-			if (sessionStatus.higho == 1 && sessionStatus.ventil != 1) {
-				sessionStatus.ventil = 1;
-				sessionStatus.vanacikis = 30;
-				if (sessionStatus.ohava == 1) ohavad('a');
-				//alarmSet('highO2', 'High O2 Level. Ventilation Started.', 0);
-			}
-
-			console.log(
-				sessionStatus.zaman,
-				sessionStatus.hedeflenen.length,
-				sessionStatus.cikis,
-				sessionStatus.eop,
-				sessionStatus.main_fsw
-			);
-			// Seans sonu kontrolü
-			if (
-				(sessionStatus.zaman > sessionStatus.profile.length - 10 ||
-					sessionStatus.cikis == 1) &&
-				sessionStatus.eop == 0 &&
-				sessionStatus.main_fsw <= 0.9
-			) {
-				alarmSet('endOfSession', 'Session Finished.', 0);
-				sessionStartBit(0);
-				doorOpen();
-				compValve(0);
-				decompValve(90);
-				sessionStatus.durum = 0;
-				sessionStatus.uyariyenile = 1;
-				sessionStatus.uyaridurum = 1;
-				sessionStatus = {
-					status: 0, // 0: session durumu yok, 1: session başlatıldı, 2: session duraklatıldı, 3: session durduruldu
-					zaman: 0,
-					dalisSuresi: 10,
-					cikisSuresi: 10,
-					hedeflenen: [],
-					cikis: 0,
-					grafikdurum: 0,
-					adim: 0,
-					adimzaman: [],
-					maxadim: [],
-					hedef: 0,
-					lastdurum: 0,
-					wait: 0,
-					p2counter: 0,
-					tempadim: 0,
-					profile: [],
-					minimumvalve: 12,
-					otomanuel: 0,
-					alarmzaman: 0,
-					diffrencesayac: 0,
-					higho: 0,
-					highoc: 0,
-					higho2: 0,
-					pauseTime: 0,
-					starttime: 0,
-					pausetime: 0,
-					ilksure: 0,
-					ilkfsw: 0,
-					fswd: 0,
-					pauseDepteh: 0,
-					doorSensorStatus: 0,
-					doorStatus: 0,
-					pressure: 0,
-					o2: 0,
-					bufferdifference: [],
-					olcum: [],
-					ventil: 0,
-					main_fsw: 0,
-					pcontrol: 0,
-					comp_offset: 12,
-					comp_gain: 8,
-					comp_depth: 100,
-					decomp_offset: 10,
-					decomp_gain: 6,
-					decomp_depth: 100,
-					chamberStatus: 1,
-					chamberStatusText: '',
-					chamberStatusTime: null,
-					setDerinlik: 0,
-					dalisSuresi: 0,
-					cikisSuresi: 0,
-					toplamSure: 0,
-					eop: 0,
-					uyariyenile: 0,
-					uyariyenile: 0,
-					// Oksijen molası için eklenen değişkenler
-					duzGrafikBaslangicZamani: 0,
-					sonOksijenMolasi: 0,
-					oksijenMolasiAktif: false,
-					oksijen: 0,
-					oksijenBaslangicZamani: 0,
-					oksijenBitisZamani: 0,
-				};
-				global.sessionStatus = sessionStatus;
-			}
+			compValve(sessionStatus.pcontrol);
+			decompValve(sessionStatus.vanacikis);
 		}
 
-		// Görüntüleme değeri hesapla
-		var displayValue = sessionStatus.main_fsw;
-		if (
-			Math.abs(difference) < 2.5 &&
-			sessionStatus.profile[sessionStatus.zaman]
-		) {
-			displayValue = sessionStatus.profile[sessionStatus.zaman][1];
+		// Çıkış durumu
+		if (sessionStatus.cikis == 1) {
+			compValve(0);
+			decompValve(90);
 		}
-
-		// Zaman görüntüleme
-		var m_display = zeroPad(parseInt(sessionStatus.zaman / 60), 2);
-		var s_display = zeroPad(sessionStatus.zaman % 60, 2);
-		//document.getElementById('time').innerHTML = '<h3>' + m_display + ':' + s_display + '</h3>';
-		//document.getElementById('carpan').innerHTML = sessionStatus.pcontrol + '-' + sessionStatus.manuelcompangel + '-' + sessionStatus.starttime + '-' + sessionStatus.pausetime;
-
-		// Sensör verilerini kaydet
-
-		// Gauge güncelle
 
 		// Yüksek oksijen kontrolü
+		if (sessionStatus.higho == 1 && sessionStatus.ventil != 1) {
+			sessionStatus.ventil = 1;
+			sessionStatus.vanacikis = 30;
+			if (sessionStatus.ohava == 1) ohavad('a');
+			//alarmSet('highO2', 'High O2 Level. Ventilation Started.', 0);
+		}
 
-		//     if(sessionStatus.zaman % 5 == 0) {
-		//         liveBit();
-		//     }
-
-		if (sessionStatus.mainov > sessionStatus.higho2) {
-			sessionStatus.highoc++;
-			if (sessionStatus.highoc > 5) {
-				sessionStatus.higho = 1;
-			}
-		} else {
+		console.log(
+			sessionStatus.zaman,
+			sessionStatus.hedeflenen.length,
+			sessionStatus.cikis,
+			sessionStatus.eop,
+			sessionStatus.main_fsw
+		);
+		// Seans sonu kontrolü
+		if (
+			(sessionStatus.zaman > sessionStatus.profile.length - 30 ||
+				sessionStatus.cikis == 1) &&
+			sessionStatus.eop == 0 &&
+			sessionStatus.pressure < 0.01
+		) {
+			sessionStatus.eop = 1;
+			alarmSet('endOfSession', 'Session Finished.', 0);
+			sendCommand({
+				url: 'ws://192.168.77.100:8080/ws',
+				my: 'server-1',
+				to: 'raspi-1',
+				command: 'end_session',
+				mapped: 'end_session',
+			});
+			sessionStartBit(0);
+			//doorOpen();
+			compValve(0);
+			decompValve(90);
+			sessionStatus.durum = 0;
+			sessionStatus.uyariyenile = 1;
+			sessionStatus.uyaridurum = 1;
+			// Seans sonu varsayılanlarını doğrudan alanlara ata
+			sessionStatus.status = 0; // 0: session durumu yok, 1: session başlatıldı, 2: session duraklatıldı, 3: session durduruldu
+			sessionStatus.zaman = 0;
+			sessionStatus.cikis = 0;
+			sessionStatus.grafikdurum = 0;
+			sessionStatus.adim = 0;
+			sessionStatus.hedef = 0;
+			sessionStatus.lastdurum = 0;
+			sessionStatus.wait = 0;
+			sessionStatus.p2counter = 0;
+			sessionStatus.tempadim = 0;
+			sessionStatus.otomanuel = 0;
+			sessionStatus.diffrencesayac = 0;
+			sessionStatus.higho = 0;
 			sessionStatus.highoc = 0;
-			if (sessionStatus.ventil != 0 && sessionStatus.higho == 1) {
-				sessionStatus.higho = 0;
-				sessionStatus.ventil = 0;
-			}
+			sessionStatus.higho2 = 0;
+			sessionStatus.pauseTime = 0;
+			sessionStatus.starttime = 0;
+			sessionStatus.pausetime = 0;
+			sessionStatus.ilksure = 0;
+			sessionStatus.ilkfsw = 0;
+			sessionStatus.pauseDepteh = 0;
+			sessionStatus.doorSensorStatus = 0;
+			sessionStatus.doorStatus = 0;
+			sessionStatus.pressure = 0;
+			sessionStatus.o2 = 0;
+			sessionStatus.bufferdifference = [];
+			sessionStatus.olcum = [];
+			sessionStatus.ventil = 0;
+			sessionStatus.pcontrol = 0;
+			sessionStatus.eop = 0;
+			sessionStatus.uyariyenile = 0;
+			// Oksijen molası için eklenen değişkenler
+			sessionStatus.duzGrafikBaslangicZamani = 0;
+			sessionStatus.sonOksijenMolasi = 0;
+			sessionStatus.oksijenMolasiAktif = false;
+			sessionStatus.oksijen = 0;
+			sessionStatus.oksijenBaslangicZamani = 0;
+			sessionStatus.oksijenBitisZamani = 0;
+		}
+	}
+
+	// Görüntüleme değeri hesapla
+	var displayValue = sessionStatus.main_fsw;
+	if (
+		Math.abs(difference) < 2.5 &&
+		Array.isArray(sessionStatus.profile) &&
+		sessionStatus.profile[sessionStatus.zaman] &&
+		Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
+		sessionStatus.profile[sessionStatus.zaman].length > 1
+	) {
+		displayValue = sessionStatus.profile[sessionStatus.zaman][1];
+	}
+
+	// Zaman görüntüleme
+	var m_display = zeroPad(parseInt(sessionStatus.zaman / 60), 2);
+	var s_display = zeroPad(sessionStatus.zaman % 60, 2);
+	//document.getElementById('time').innerHTML = '<h3>' + m_display + ':' + s_display + '</h3>';
+	//document.getElementById('carpan').innerHTML = sessionStatus.pcontrol + '-' + sessionStatus.manuelcompangel + '-' + sessionStatus.starttime + '-' + sessionStatus.pausetime;
+
+	// Sensör verilerini kaydet
+
+	// Gauge güncelle
+
+	// Yüksek oksijen kontrolü
+
+	//     if(sessionStatus.zaman % 5 == 0) {
+	//         liveBit();
+	//     }
+
+	if (sessionStatus.mainov > sessionStatus.higho2) {
+		sessionStatus.highoc++;
+		if (sessionStatus.highoc > 5) {
+			sessionStatus.higho = 1;
+		}
+	} else {
+		sessionStatus.highoc = 0;
+		if (sessionStatus.ventil != 0 && sessionStatus.higho == 1) {
+			sessionStatus.higho = 0;
+			sessionStatus.ventil = 0;
 		}
 	}
 }
@@ -1315,15 +1421,11 @@ function read_demo() {
 	// Sistem aktifse kontrol et
 	if (sessionStatus.status > 0 && sessionStatus.zaman > 5) {
 		// Simulate pressure based on profile (demo mode)zaxaza
-
 		if (
 			sessionStatus.profile.length > sessionStatus.zaman &&
 			sessionStatus.profile[sessionStatus.zaman]
 		) {
-			if (sessionStatus.status == 1)
-				sensorData['pressure'] = sessionStatus.profile[sessionStatus.zaman][1];
-			else if (sessionStatus.status == 2)
-				sensorData['pressure'] = sessionStatus.pauseDepth;
+			sensorData['pressure'] = sessionStatus.profile[sessionStatus.zaman][1];
 			sessionStatus.hedef =
 				sessionStatus.profile[sessionStatus.zaman][1] * 33.4;
 		} else if (
@@ -1332,7 +1434,6 @@ function read_demo() {
 		) {
 			sensorData['pressure'] =
 				sessionStatus.profile[sessionStatus.profile.length - 1][1];
-
 			sessionStatus.hedef =
 				sessionStatus.profile[sessionStatus.profile.length - 1][1] * 33.4;
 		} else {
@@ -1346,9 +1447,6 @@ function read_demo() {
 		sessionStatus.pressure = sessionStatus.hedef / 33.4;
 		sessionStatus.main_fsw = sessionStatus.hedef / 33.4;
 		sensorData['pressure'] = sessionStatus.hedef / 33.4;
-		if (sessionStatus.status == 2)
-			sensorData['pressure'] = sessionStatus.pauseDepth;
-		else sensorData['pressure'] = sessionStatus.hedef / 33.4;
 
 		sessionStatus.o2 = sensorData['o2'];
 
@@ -1387,62 +1485,109 @@ function read_demo() {
 			sessionStatus.grafikdurum = 0; // Default to descent when at end
 		}
 
+		// Oksijen molası kontrolü - Düz grafik durumunda (demo mode)
 		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-			sessionStatus.profile[sessionStatus.zaman + 1].length > 2
-		) {
-			console.log(
-				sessionStatus.profile[sessionStatus.zaman][2],
-				sessionStatus.profile[sessionStatus.zaman + 1][2],
-				sessionStatus.oksijen
-			);
-		}
-
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-			sessionStatus.profile[sessionStatus.zaman + 1].length > 2
+			sessionStatus.grafikdurum === 2 &&
+			sessionStatus.otomanuel == 0 &&
+			sessionStatus.status == 1
 		) {
 			if (
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-				sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-				sessionStatus.profile[sessionStatus.zaman + 1].length > 2
+				sessionStatus.oksijen == 0 &&
+				sessionStatus.oksijenBaslangicZamani == 0 &&
+				sessionStatus.oksijenBitisZamani == 0
 			) {
-				if (
-					sessionStatus.profile[sessionStatus.zaman][2] == 'air' &&
-					sessionStatus.profile[sessionStatus.zaman + 1][2] == 'o' &&
-					sessionStatus.oksijen == 0
-				) {
-					sessionStatus.oksijen = 1;
-					alarmSet(
-						'oxygenBreak',
-						'Treatment Starting. Please wear your mask.',
-						0
-					);
-				} else if (
-					sessionStatus.profile[sessionStatus.zaman][2] == 'o' &&
-					sessionStatus.profile[sessionStatus.zaman + 1][2] == 'air' &&
-					sessionStatus.oksijen == 1
-				) {
-					sessionStatus.oksijen = 0;
+				sessionStatus.oksijen = 1;
+				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1;
+				sessionStatus.oksijenBitisZamani = sessionStatus.zaman + 1 * 60;
+				alarmSet(
+					'oxygenBreak',
+					'Treatment Starting. Please put the mask on.',
+					0
+				);
+				console.log(
+					'Değişti : oksijen',
+					sessionStatus.oksijen,
+					'oksijenBaslangicZamani',
+					sessionStatus.oksijenBaslangicZamani,
+					'oksijenBitisZamani',
+					sessionStatus.oksijenBitisZamani
+				);
+			} else if (
+				sessionStatus.oksijen == 1 &&
+				sessionStatus.zaman >= sessionStatus.oksijenBitisZamani
+			) {
+				console.log(
+					'Değişti : oksijen',
+					sessionStatus.oksijen,
+					'oksijenBaslangicZamani',
+					sessionStatus.oksijenBaslangicZamani,
+					'oksijenBitisZamani',
+					sessionStatus.oksijenBitisZamani
+				);
+				sessionStatus.oksijen = 0;
+				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1 * 60;
+				sessionStatus.oksijenBitisZamani = 0;
+				alarmSet(
+					'oxygenBreak',
+					'Please take off your mask. Oxygen Break Time.',
+					0
+				);
+			} else if (
+				sessionStatus.oksijen == 0 &&
+				sessionStatus.zaman >= sessionStatus.oksijenBaslangicZamani &&
+				sessionStatus.oksijenBitisZamani == 0
+			) {
+				sessionStatus.oksijen = 1;
+				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1;
+				sessionStatus.oksijenBitisZamani = sessionStatus.zaman + 1 * 60;
+				alarmSet('oxygenBreak', 'Please put the mask on.', 0);
+				console.log(
+					'Değişti : oksijen',
+					sessionStatus.oksijen,
+					'oksijenBaslangicZamani',
+					sessionStatus.oksijenBaslangicZamani,
+					'oksijenBitisZamani',
+					sessionStatus.oksijenBitisZamani
+				);
+			}
 
-					alarmSet(
-						'oxygenBreak',
-						'Please take off your mask. Oxygen Break Time.',
-						0
-					);
-				}
+			console.log(
+				'oksijen',
+				sessionStatus.oksijen,
+				'oksijenBaslangicZamani',
+				sessionStatus.oksijenBaslangicZamani,
+				'oksijenBitisZamani',
+				sessionStatus.oksijenBitisZamani
+			);
+		} else {
+			// Düz durumdan çıkıldığında timer'ları sıfırla
+			if (
+				sessionStatus.lastdurum === 2 &&
+				sessionStatus.cikis == 0 &&
+				sessionStatus.grafikdurum == 0
+			) {
+				sessionStatus.oksijen = 0;
+				sessionStatus.oksijenBaslangicZamani = 0;
+				sessionStatus.oksijenBitisZamani = 0;
+				alarmSet(
+					'treatmenFinished',
+					'Treatment Finished. Please take off your mask. Decompression Starting.',
+					0
+				);
+				console.log(
+					'Değişti : oksijen',
+					sessionStatus.oksijen,
+					'oksijenBaslangicZamani',
+					sessionStatus.oksijenBaslangicZamani,
+					'oksijenBitisZamani',
+					sessionStatus.oksijenBitisZamani
+				);
 			}
 		}
 
 		// Check if step (adım) has changed
 		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
+			sessionStatus.profile[sessionStatus.zaman] &&
 			sessionStatus.adim !== sessionStatus.profile[sessionStatus.zaman][2]
 		) {
 			console.log(
@@ -1462,10 +1607,7 @@ function read_demo() {
 			sessionStatus.p2counter = 0;
 		}
 
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2
-		) {
+		if (sessionStatus.profile[sessionStatus.zaman]) {
 			sessionStatus.adim = sessionStatus.profile[sessionStatus.zaman][2];
 		}
 
@@ -1629,6 +1771,7 @@ function read_demo() {
 				sessionStatus.eop == 0 &&
 				sessionStatus.main_fsw <= 0.5
 			) {
+				sessionStatus.eop = 1;
 				alarmSet('endOfSession', 'Session Finished.', 0);
 				sessionStartBit(0);
 				//doorOpen();
@@ -1640,14 +1783,9 @@ function read_demo() {
 				sessionStatus = {
 					status: 0,
 					zaman: 0,
-					dalisSuresi: 10,
-					cikisSuresi: 10,
-					hedeflenen: [],
 					cikis: 0,
 					grafikdurum: 0,
 					adim: 0,
-					adimzaman: [],
-					maxadim: [],
 					hedef: 0,
 					lastdurum: 0,
 					wait: 0,
@@ -1656,7 +1794,6 @@ function read_demo() {
 					profile: [],
 					minimumvalve: 12,
 					otomanuel: 0,
-					alarmzaman: 0,
 					diffrencesayac: 0,
 					higho: 0,
 					highoc: 0,
@@ -1677,19 +1814,6 @@ function read_demo() {
 					ventil: 0,
 					main_fsw: 0,
 					pcontrol: 0,
-					comp_offset: 12,
-					comp_gain: 8,
-					comp_depth: 100,
-					decomp_offset: 10,
-					decomp_gain: 6,
-					decomp_depth: 100,
-					chamberStatus: 1,
-					chamberStatusText: '',
-					chamberStatusTime: null,
-					setDerinlik: 0,
-					dalisSuresi: 0,
-					cikisSuresi: 0,
-					toplamSure: 0,
 					eop: 0,
 					uyariyenile: 0,
 					// Oksijen molası için eklenen değişkenler
@@ -1792,6 +1916,7 @@ function alarmClear() {
 	alarmStatus.text = '';
 	alarmStatus.time = 0;
 	alarmStatus.duration = 0;
+	sessionStatus.patientWarning = false;
 }
 
 function doorClose() {
@@ -2022,17 +2147,99 @@ function sessionResume(
 	console.log('Profile updated for session resume:', sessionStatus.profile);
 }
 
+function sessionFinishToZero(startTimeOverride, currentPressureOverride) {
+	// Start from current session time if not provided
+	const startTime = Number.isFinite(startTimeOverride)
+		? startTimeOverride
+		: sessionStatus.zaman;
+
+	// Use live sensor pressure if available, else from profile, else 0
+	let currentPressure = Number.isFinite(currentPressureOverride)
+		? currentPressureOverride
+		: typeof sensorData !== 'undefined' &&
+		  Number.isFinite(sensorData['pressure'])
+		? sensorData['pressure']
+		: sessionStatus.profile[startTime]
+		? sessionStatus.profile[startTime][1]
+		: 0;
+
+	if (!Array.isArray(sessionStatus.profile)) sessionStatus.profile = [];
+	// originalLength removed; we will truncate instead of filling with zeros
+
+	// Determine step index to keep series consistent
+	let stepIndexVal = 1;
+	if (
+		sessionStatus.profile[startTime] &&
+		sessionStatus.profile[startTime].length >= 4
+	) {
+		stepIndexVal = sessionStatus.profile[startTime][3];
+	} else if (
+		startTime > 0 &&
+		sessionStatus.profile[startTime - 1] &&
+		sessionStatus.profile[startTime - 1].length >= 4
+	) {
+		stepIndexVal = sessionStatus.profile[startTime - 1][3];
+	}
+
+	// Estimate per-second slope from the last 30 seconds
+	let slope = 0;
+
+	if (sessionStatus.speed == 1) slope = 0.5;
+	else if (sessionStatus.speed == 2) slope = 1;
+	else if (sessionStatus.speed == 3) slope = 3;
+
+	// Guard against zero/NaN: derive a reasonable fallback from current pressure
+
+	currentPressure = Math.max(0, Number(currentPressure || 0));
+	console.log('currentPressure', currentPressure);
+
+	if (currentPressure === 0) {
+		// Already at zero; still set one zero point for consistency
+		sessionStatus.profile[startTime] = [startTime + 1, 0, 'air', stepIndexVal];
+		// Remove any remaining planned points after this zero point
+		sessionStatus.profile.length = startTime + 1;
+		return;
+	}
+
+	let timeToZero = Math.ceil((currentPressure * 10) / slope) * 60;
+	if (!isFinite(timeToZero) || timeToZero < 1) timeToZero = 1;
+
+	for (let s = 0; s < timeToZero; s++) {
+		const idx = startTime + s;
+		const ratio = (s + 1) / timeToZero; // 0->1
+		const p = Math.max(0, currentPressure * (1 - ratio));
+		sessionStatus.profile[idx] = [
+			idx + 1,
+			Number(p.toFixed(4)),
+			'air',
+			stepIndexVal,
+		];
+	}
+
+	// Ensure last point is exactly zero
+	const lastIdx = startTime + timeToZero - 1;
+	sessionStatus.profile[lastIdx] = [lastIdx + 1, 0, 'air', stepIndexVal];
+
+	// Remove any remaining planned points after reaching zero
+	sessionStatus.profile.length = lastIdx + 1;
+
+	console.log(
+		'Session finish profile generated to zero starting at',
+		startTime,
+		'with',
+		timeToZero,
+		'seconds.'
+	);
+}
+
 function sessionStop() {
 	console.log('Session stop initiated at time:', sessionStatus.zaman);
 
 	// Set exit mode (equivalent to cikis=3 in PHP)
 	compValve(0);
-	decompValve(90);
-	oxygenClose();
-	sessionStatus.cikis = 3;
-	sessionStatus.status = 3;
-	sessionStatus.otomanuel = 0;
-	sessionStatus.grafikdurum = 0;
+	decompValve(0);
+	sessionFinishToZero();
+
 	sessionStatus.oksijen = 0;
 	sessionStatus.oksijenBaslangicZamani = 0;
 	sessionStatus.oksijenBitisZamani = 0;
@@ -2040,7 +2247,7 @@ function sessionStop() {
 	// Convert profile to hedeflenen array format (depth values only)
 
 	// Set exit flag for valve control
-	sessionStatus.cikis = 1;
+	//sessionStatus.cikis = 1;
 
 	alarmSet(
 		'sessionStop',
@@ -2048,6 +2255,33 @@ function sessionStop() {
 		0
 	);
 }
+
+// function sessionStop() {
+// 	console.log('Session stop initiated at time:', sessionStatus.zaman);
+
+// 	// Set exit mode (equivalent to cikis=3 in PHP)
+// 	compValve(0);
+// 	decompValve(40);
+// 	oxygenClose();
+// 	sessionStatus.cikis = 3;
+// 	sessionStatus.status = 3;
+// 	sessionStatus.otomanuel = 0;
+// 	sessionStatus.grafikdurum = 0;
+// 	sessionStatus.oksijen = 0;
+// 	sessionStatus.oksijenBaslangicZamani = 0;
+// 	sessionStatus.oksijenBitisZamani = 0;
+
+// 	// Convert profile to hedeflenen array format (depth values only)
+
+// 	// Set exit flag for valve control
+// 	sessionStatus.cikis = 1;
+
+// 	alarmSet(
+// 		'sessionStop',
+// 		'Session stop initiated. Decompressing to surface.',
+// 		0
+// 	);
+// }
 
 /**
  * Seans sırasında sadece tedavi derinliğini (orta faz) değiştiren fonksiyon
@@ -2338,26 +2572,15 @@ function setO2CalibrationPoint(point, rawValue, actualPercentage) {
  * @param {number} depth - Treatment depth
  * @returns {Array} Array of profile segments [duration, depth, gas_type]
  */
-function createAlternatingTreatmentProfile(
-	treatmentDuration,
-	depth,
-	oxygenDuration = 1,
-	airBreakDuration = 1
-) {
+function createAlternatingTreatmentProfile(treatmentDuration, depth) {
 	// Guard against invalid/negative durations
-	if (
-		!Number.isFinite(treatmentDuration) ||
-		treatmentDuration <= 0 ||
-		!Number.isFinite(oxygenDuration) ||
-		oxygenDuration <= 0 ||
-		!Number.isFinite(airBreakDuration) ||
-		airBreakDuration <= 0
-	) {
+	if (typeof treatmentDuration !== 'number' || treatmentDuration <= 0) {
 		return [];
 	}
 
 	const segments = [];
-
+	const oxygenDuration = 20; // 15 minutes oxygen
+	const airBreakDuration = 5; // 5 minutes air break
 	const cycleDuration = oxygenDuration + airBreakDuration; // 20 minutes total per cycle
 
 	let remainingTime = treatmentDuration;
@@ -2388,4 +2611,60 @@ function createAlternatingTreatmentProfile(
 	}
 
 	return segments;
+}
+
+function createChart() {
+	const treatmentDuration =
+		sessionStatus.toplamSure -
+		(sessionStatus.dalisSuresi + sessionStatus.cikisSuresi);
+	const safeTreatmentDuration = Math.max(
+		0,
+		Number.isFinite(treatmentDuration) ? treatmentDuration : 0
+	);
+
+	let treatmentSegments = createAlternatingTreatmentProfile(
+		safeTreatmentDuration,
+		sessionStatus.setDerinlik
+	);
+	if (sessionStatus.toplamSure == 80) {
+		treatmentSegments = [
+			[15, sessionStatus.setDerinlik, 'o'],
+			[5, sessionStatus.setDerinlik, 'air'],
+			[20, sessionStatus.setDerinlik, 'o'],
+			[5, sessionStatus.setDerinlik, 'air'],
+			[15, sessionStatus.setDerinlik, 'o'],
+		];
+	} else if (sessionStatus.toplamSure == 110) {
+		treatmentSegments = [
+			[20, sessionStatus.setDerinlik, 'o'],
+			[5, sessionStatus.setDerinlik, 'air'],
+			[20, sessionStatus.setDerinlik, 'o'],
+			[5, sessionStatus.setDerinlik, 'air'],
+			[20, sessionStatus.setDerinlik, 'o'],
+			[5, sessionStatus.setDerinlik, 'air'],
+			[15, sessionStatus.setDerinlik, 'o'],
+		];
+	}
+
+	// Build complete profile with descent, alternating treatment, and ascent
+	const setProfileRaw = [
+		[sessionStatus.dalisSuresi, sessionStatus.setDerinlik, 'air'], // Descent phase
+		...treatmentSegments, // Alternating oxygen/air treatment phases
+		[sessionStatus.cikisSuresi, 0, 'air'], // Ascent phase
+	];
+
+	// Filter out any invalid or non-positive duration segments to satisfy validator
+	const setProfile = setProfileRaw.filter(
+		(seg) => Array.isArray(seg) && Number.isFinite(seg[0]) && seg[0] > 0
+	);
+
+	const quickProfile = ProfileUtils.createQuickProfile(setProfile);
+	sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
+
+	// Export profile to JSON file
+	const fs = require('fs');
+	const profileData = JSON.stringify(sessionStatus.profile, null, 2);
+	fs.writeFileSync('session_profile.json', profileData);
+
+	//console.log(sessionStatus.profile);
 }

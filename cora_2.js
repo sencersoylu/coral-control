@@ -95,7 +95,7 @@ let sessionStatus = {
 	comp_depth: 100,
 	decomp_offset: 14,
 	decomp_gain: 7,
-	decomp_depth: 100,
+	decomp_depth: 50,
 	chamberStatus: 1,
 	chamberStatusText: '',
 	chamberStatusTime: null,
@@ -885,9 +885,12 @@ function read() {
 				(sessionStatus.zaman > sessionStatus.profile.length - 60 ||
 					sessionStatus.cikis == 1) &&
 				sessionStatus.eop == 0 &&
-				sessionStatus.main_fsw <= 0.9
+				sessionStatus.main_fsw <= 0.3
 			) {
-				alarmSet('endOfSession', 'Session Finished.', 0);
+				timeout(() => {
+					alarmSet('endOfSession', 'Session Finished.', 0);
+				}, 10000);
+
 				sessionStartBit(0);
 				doorOpen();
 				sessionStatus.durum = 0;
@@ -1514,7 +1517,7 @@ function liveBit() {
 }
 
 function sessionStartBit(value) {
-	socket.emit('writeBit', { register: 'M0120', value: value });
+	socket.emit('writeBit', { register: 'M0130', value: value });
 }
 
 function zeroPad(num, numZeros) {
