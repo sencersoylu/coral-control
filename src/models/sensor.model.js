@@ -12,11 +12,13 @@ module.exports = (sequelize, Sequelize) => {
 			sensorMemory: Sequelize.INTEGER,
 			sensorSymbol: Sequelize.STRING,
 			sensorOffset: Sequelize.INTEGER,
-			sensorLowerLimit: Sequelize.REAL(2,1),
-			sensorUpperLimit: Sequelize.REAL(2,1),
+			sensorLowerLimit: Sequelize.REAL(2, 1),
+			sensorUpperLimit: Sequelize.REAL(2, 1),
 			sensorAnalogUpper: Sequelize.INTEGER,
 			sensorAnalogLower: Sequelize.INTEGER,
 			sensorDecimal: Sequelize.INTEGER,
+			rawData: Sequelize.INTEGER,
+			sensorReal: Sequelize.REAL(2, 1),
 		},
 		{}
 	);

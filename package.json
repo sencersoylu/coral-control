@@ -5,24 +5,30 @@
   "main": "index.js",
   "scripts": {
     "start": "nodemon index.js",
-    "db:create": "node src/config/sequelize.js"
+    "db:create": "node src/config/sequelize.js",
+    "db:migrate": "node scripts/migrate-db.js",
+    "seed:admin": "node scripts/createAdminUser.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",
     "dotenv": "^16.0.0",
     "express": "^4.17.3",
     "highcharts-export-server": "^5.0.0",
+    "jsonwebtoken": "^9.0.2",
     "puppeteer": "^24.12.1",
     "redis": "^4.7.1",
     "sequelize": "^6.17.0",
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.8.1",
-    "sqlite3": "^5.1.6"
+    "sqlite3": "^5.1.6",
+    "ws": "^8.18.0",
+    "mqtt": "^5.10.1"
   },
   "devDependencies": {
     "nodemon": "^2.0.15"
