@@ -191,4 +191,50 @@ router.put('/sensors/bulk-update-data', async (req, res) => {
 	}
 });
 
+// POST /sensors/bulk-update — config.html sensor table bulk save
+router.post('/sensors/bulk-update', async (req, res) => {
+	try {
+		const { sensors } = req.body || {};
+		if (!Array.isArray(sensors) || sensors.length === 0) {
+			return res.status(400).json({ error: 'sensors array is required' });
+		}
+
+		const updates = [];
+		const errors = [];
+
+		for (const s of sensors) {
+			if (!s.sensorID) {
+				errors.push('Missing sensorID');
+				continue;
+			}
+			const sensor = await db.sensors.findByPk(s.sensorID);
+			if (!sensor) {
+				errors.push(`Sensor ${s.sensorID} not found`);
+				continue;
+			}
+
+			const fields = [
+				'sensorName', 'sensorText', 'sensorMemory', 'sensorSymbol',
+				'sensorOffset', 'sensorLowerLimit', 'sensorUpperLimit',
+				'sensorAnalogUpper', 'sensorAnalogLower', 'sensorDecimal',
+				'rawData', 'sensorReal',
+			];
+			for (const f of fields) {
+				if (s[f] !== undefined) sensor[f] = s[f];
+			}
+
+			await sensor.save();
+			updates.push({ sensorID: sensor.sensorID, sensorName: sensor.sensorName });
+		}
+
+		if (updates.length === 0 && errors.length > 0) {
+			return res.status(400).json({ error: 'All updates failed', errors });
+		}
+
+		successResponse(req, res, { updated: updates, errors: errors.length > 0 ? errors : undefined });
+	} catch (error) {
+		errorResponse(req, res, error.message);
+	}
+});
+
 module.exports = router;

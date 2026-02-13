@@ -74,10 +74,43 @@ async function migrateDatabase() {
 		}
 
 		// ============================================
-		// DİĞER TABLOLAR İÇİN BENZER KONTROLLER
+		// CONFIG TABLOSU GÜNCELLEMELERİ
 		// ============================================
-		// Buraya diğer model güncellemelerinizi ekleyebilirsiniz
-		// Örnek: Config, Patient, SensorData, HyperbaricProfile vb.
+		console.log('\n⚙️  Config tablosu kontrol ediliyor...');
+		const configTableName = db.config.getTableName();
+		let configTableDesc;
+		try {
+			configTableDesc = await queryInterface.describeTable(configTableName);
+		} catch (e) {
+			console.log('  ⚠️  Config tablosu henüz oluşturulmamış');
+			configTableDesc = {};
+		}
+
+		const newConfigColumns = {
+			cloudApiUrl: { type: Sequelize.STRING, defaultValue: '' },
+			chamberApiKey: { type: Sequelize.STRING, defaultValue: '' },
+			signalingUrl: { type: Sequelize.STRING, defaultValue: 'ws://192.168.1.12:8080/ws' },
+			wsCommandUrl: { type: Sequelize.STRING, defaultValue: 'ws://192.168.77.100:8080/ws' },
+			serverId: { type: Sequelize.STRING, defaultValue: 'server-1' },
+			targetId: { type: Sequelize.STRING, defaultValue: 'raspi-1' },
+			jwtSecret: { type: Sequelize.STRING, defaultValue: 'coral-secret' },
+			serverPort: { type: Sequelize.INTEGER, defaultValue: 4001 },
+			sensorUpdateInterval: { type: Sequelize.INTEGER, defaultValue: 10000 },
+			heartbeatInterval: { type: Sequelize.INTEGER, defaultValue: 30000 },
+		};
+
+		for (const [colName, colDef] of Object.entries(newConfigColumns)) {
+			if (configTableDesc && !configTableDesc[colName]) {
+				console.log(`  ➕ ${colName} kolonu ekleniyor...`);
+				await queryInterface.addColumn(configTableName, colName, {
+					...colDef,
+					allowNull: true,
+				});
+				console.log(`  ✅ ${colName} kolonu eklendi`);
+			} else if (configTableDesc && configTableDesc[colName]) {
+				console.log(`  ✓ ${colName} kolonu zaten mevcut`);
+			}
+		}
 
 		// ============================================
 		// TABLO SENKRONİZASYONU (Sadece yeni tablolar için)

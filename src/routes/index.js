@@ -12,6 +12,7 @@ router.use([
 	require('./auth.js'),
 	require('./users.js'),
 	require('./sessions.js'),
+	require('./config.js'),
 ]);
 
 // Test endpoint to create sample session profile
@@ -55,6 +56,16 @@ router.post('/patients', async (req, res) => {
 			birthDate,
 			gender,
 		});
+
+		if (global.cloudReporter) {
+			global.cloudReporter.syncPatient({
+				localId: patient.id,
+				fullName,
+				birthDate,
+				gender,
+			});
+		}
+
 		res.status(201).json(patient);
 	} catch (error) {
 		res.status(500).json({ error: error.message });

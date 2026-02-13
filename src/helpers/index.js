@@ -354,7 +354,7 @@ module.exports = {
 				? authHeader.slice(7)
 				: null;
 			if (!token) return res.status(401).json({ error: 'Missing token' });
-			const secret = process.env.JWT_SECRET || 'coral-secret';
+			const secret = (global.appConfig && global.appConfig.jwtSecret) || process.env.JWT_SECRET || 'coral-secret';
 			const payload = jwt.verify(token, secret);
 			req.user = payload;
 			next();
@@ -374,7 +374,7 @@ module.exports = {
 		};
 	},
 	generateUserToken: function (user) {
-		const secret = process.env.JWT_SECRET || 'coral-secret';
+		const secret = (global.appConfig && global.appConfig.jwtSecret) || process.env.JWT_SECRET || 'coral-secret';
 		return jwt.sign(
 			{
 				id: user.id,

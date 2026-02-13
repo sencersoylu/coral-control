@@ -21,33 +21,20 @@ let server = http.Server(app);
 const bodyParser = require('body-parser');
 const SensorCalibration = require('./o2_calibration');
 const { sendCommand } = require('./src/ws/client');
-const mqtt = require('mqtt');
+const CloudReporter = require('./cloud_reporter');
 
 const connections = []; // view soket bağlantılarının tutulduğu array
 let isWorking = 0;
 let isConnectedPLC = 0;
 let sensorCalibrationData = {}; // Object to store all sensor calibration data
-let demoMode = 0;
+let demoMode = 1;
 let currentSessionRecordId = null; // Aktif seans kaydı ID'si
 let currentLoggedInUserId = null; // Giriş yapmış kullanıcı ID'si
 let lastSensorUpdateTime = 0; // Son sensör güncelleme zamanı (timestamp)
-const SENSOR_UPDATE_INTERVAL = 10000; // 10 saniye (milisaniye cinsinden)
+let SENSOR_UPDATE_INTERVAL = 10000; // Overridden by appConfig.sensorUpdateInterval
 
-// MQTT Client Configuration
-let mqttClient = null;
-const MQTT_CONFIG = {
-	host: process.env.MQTT_HOST || 'u1691114.ala.eu-central-1.emqxsl.com',
-	port: process.env.MQTT_PORT || 8883,
-	protocol: 'mqtts', // TLS/SSL
-	username: process.env.MQTT_USERNAME || 'arc02',
-	password: process.env.MQTT_PASSWORD || 'Sencer77.',
-	clientId:
-		process.env.MQTT_CLIENT_ID ||
-		`${process.env.MQTT_USERNAME || 'arco02'}-${Date.now()}`,
-	reconnectPeriod: 5000,
-	clean: true,
-};
-const MQTT_TOPIC_PREFIX = process.env.MQTT_TOPIC_PREFIX || 'hyperbaric/chamber';
+// Cloud Reporter — initialized after config is loaded from DB
+let cloudReporter = null;
 
 // Insert default sensor data after sync
 async function insertDefaultSensorData() {
@@ -262,7 +249,6 @@ let sessionStatus = {
 	oksijen: 0,
 	oksijenBaslangicZamani: 0,
 	oksijenBitisZamani: 0,
-<<<<<<< HEAD
 	speed: 1,
 	highHumidity: false,
 	humidityAlarmLevel: 70,
@@ -270,9 +256,7 @@ let sessionStatus = {
 	pressRateFswPerMin: 0,
 	pressRateBarPerMin: 0,
 	patientWarningStatus: 0,
-=======
-	profileSteps: [],
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
+	cloudSessionId: null,
 };
 
 // Make sessionStatus globally accessible
@@ -286,6 +270,9 @@ class LowPassFilter {
 		this.alpha = Number(alpha);
 		this.sensorName = sensorName;
 		this.y = undefined;
+	}
+	setAlpha(alpha) {
+		this.alpha = Number(alpha);
 	}
 	update(x) {
 		const value = Number(x);
@@ -375,163 +362,6 @@ let alarmStatus = {
 	duration: 0,
 };
 
-// MQTT Connection Functions
-function connectMQTT() {
-	try {
-		// MQTT bağlantı seçeneklerini hazırla
-		const mqttOptions = {
-			username: MQTT_CONFIG.username,
-			password: MQTT_CONFIG.password,
-			clientId: MQTT_CONFIG.clientId,
-			reconnectPeriod: MQTT_CONFIG.reconnectPeriod,
-			clean: MQTT_CONFIG.clean,
-			connectTimeout: 10000,
-			// TLS seçenekleri
-			rejectUnauthorized: false, // Self-signed sertifikalar için
-		};
-
-		// CA sertifika dosyası varsa ekle
-		const caPath = path.join(__dirname, 'emqxsl-ca.crt');
-		if (fs.existsSync(caPath)) {
-			mqttOptions.ca = fs.readFileSync(caPath);
-		}
-
-		mqttClient = mqtt.connect(
-			`${MQTT_CONFIG.protocol}://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`,
-			mqttOptions
-		);
-
-		mqttClient.on('connect', (connack) => {
-			// Bağlantı başarılı olduğunda status mesajı gönder
-			publishToMQTT(`${MQTT_TOPIC_PREFIX}/status`, {
-				status: 'online',
-				clientId: MQTT_CONFIG.clientId,
-				connectedAt: dayjs().toISOString(),
-			});
-		});
-
-		mqttClient.on('error', (error) => {
-			if (error.code === 5) {
-				console.error('MQTT authentication error: Not authorized');
-			} else {
-				console.error('MQTT error:', error.message);
-			}
-		});
-	} catch (error) {
-		console.error('Failed to initialize MQTT client:', error);
-		console.error('Error details:', error.stack);
-	}
-}
-
-function publishToMQTT(topic, data) {
-	if (!mqttClient || !mqttClient.connected) {
-		return;
-	}
-
-	try {
-		const payload = JSON.stringify({
-			...data,
-			timestamp: dayjs().toISOString(),
-		});
-
-		mqttClient.publish(topic, payload, { qos: 1 });
-	} catch (error) {
-		console.error(`Error publishing to MQTT topic ${topic}:`, error);
-	}
-}
-
-function publishAllChamberData() {
-	if (!mqttClient || !mqttClient.connected) {
-		return;
-	}
-
-	try {
-		// Sensor verileri
-		const sensorDataPayload = {
-			pressure: Number(sensorData['pressure']?.toFixed(2)) || 0,
-			o2: Number(sensorData['o2']?.toFixed(1)) || 0,
-			temperature: Number(sensorData['temperature']?.toFixed(1)) || 0,
-			humidity: Number(sensorData['humidity']?.toFixed(0)) || 0,
-			o2RawValue: sensorData.o2RawValue || 0,
-		};
-
-		// Session status verileri
-		const sessionStatusPayload = {
-			status: sessionStatus.status,
-			zaman: sessionStatus.zaman,
-			dalisSuresi: sessionStatus.dalisSuresi,
-			cikisSuresi: sessionStatus.cikisSuresi,
-			toplamSure: sessionStatus.toplamSure,
-			setDerinlik: sessionStatus.setDerinlik,
-			hedef: sessionStatus.hedef,
-			grafikdurum: sessionStatus.grafikdurum,
-			adim: sessionStatus.adim,
-			otomanuel: sessionStatus.otomanuel,
-			pressure: sessionStatus.pressure,
-			main_fsw: sessionStatus.main_fsw,
-			fsw: sessionStatus.fsw,
-			o2: sessionStatus.o2,
-			oksijen: sessionStatus.oksijen,
-			oksijenBaslangicZamani: sessionStatus.oksijenBaslangicZamani,
-			oksijenBitisZamani: sessionStatus.oksijenBitisZamani,
-			speed: sessionStatus.speed,
-			pressRateFswPerMin: sessionStatus.pressRateFswPerMin,
-			pressRateBarPerMin: sessionStatus.pressRateBarPerMin,
-			sessionStartTime: sessionStatus.sessionStartTime
-				? dayjs(sessionStatus.sessionStartTime).toISOString()
-				: null,
-		};
-
-		// Chamber status verileri
-		const chamberStatusPayload = {
-			chamberStatus: sessionStatus.chamberStatus,
-			chamberStatusText: sessionStatus.chamberStatusText,
-			chamberStatusTime: sessionStatus.chamberStatusTime,
-			doorStatus: sessionStatus.doorStatus,
-			doorSensorStatus: sessionStatus.doorSensorStatus,
-			patientWarning: sessionStatus.patientWarning,
-		};
-
-		// Alarm verileri
-		const alarmPayload = {
-			status: alarmStatus.status,
-			type: alarmStatus.type,
-			text: alarmStatus.text,
-			time: alarmStatus.time ? dayjs(alarmStatus.time).toISOString() : null,
-			duration: alarmStatus.duration,
-		};
-
-		// Valve kontrol verileri
-		const valveControlPayload = {
-			pcontrol: sessionStatus.pcontrol,
-			ventil: sessionStatus.ventil,
-			vanacikis: sessionStatus.vanacikis,
-			comp_offset: sessionStatus.comp_offset,
-			comp_gain: sessionStatus.comp_gain,
-			decomp_offset: sessionStatus.decomp_offset,
-			decomp_gain: sessionStatus.decomp_gain,
-		};
-
-		// Tüm verileri yayınla
-		publishToMQTT(`${MQTT_TOPIC_PREFIX}/sensors`, sensorDataPayload);
-		publishToMQTT(`${MQTT_TOPIC_PREFIX}/session`, sessionStatusPayload);
-		publishToMQTT(`${MQTT_TOPIC_PREFIX}/chamber`, chamberStatusPayload);
-		publishToMQTT(`${MQTT_TOPIC_PREFIX}/alarm`, alarmPayload);
-		publishToMQTT(`${MQTT_TOPIC_PREFIX}/valves`, valveControlPayload);
-
-		// Tüm verileri tek bir topic'te de yayınla
-		publishToMQTT(`${MQTT_TOPIC_PREFIX}/all`, {
-			sensors: sensorDataPayload,
-			session: sessionStatusPayload,
-			chamber: chamberStatusPayload,
-			alarm: alarmPayload,
-			valves: valveControlPayload,
-		});
-	} catch (error) {
-		console.error('Error publishing chamber data to MQTT:', error);
-	}
-}
-
 // Load config values from database
 async function loadConfigFromDB() {
 	try {
@@ -555,6 +385,29 @@ async function loadConfigFromDB() {
 				lastSessionSpeed: 1,
 			});
 			console.log('Default config created in database');
+		}
+
+		// Store full config globally
+		global.appConfig = config.toJSON();
+
+		// Apply intervals from config
+		SENSOR_UPDATE_INTERVAL = global.appConfig.sensorUpdateInterval || 10000;
+
+		// Apply demo mode from config
+		demoMode = global.appConfig.demoMode ? 1 : 0;
+
+		// Apply filter alphas from config (override env vars)
+		if (global.appConfig.filterAlphaPressure != null) {
+			filters.pressure.setAlpha(global.appConfig.filterAlphaPressure);
+		}
+		if (global.appConfig.filterAlphaO2 != null) {
+			filters.o2.setAlpha(global.appConfig.filterAlphaO2);
+		}
+		if (global.appConfig.filterAlphaTemperature != null) {
+			filters.temperature.setAlpha(global.appConfig.filterAlphaTemperature);
+		}
+		if (global.appConfig.filterAlphaHumidity != null) {
+			filters.humidity.setAlpha(global.appConfig.filterAlphaHumidity);
 		}
 
 		// Valve control parametrelerini sessionStatus'a ata
@@ -612,6 +465,44 @@ async function loadConfigFromDB() {
 	}
 }
 
+// Live config re-apply (called from config routes after DB update)
+global.applyConfigToApp = function () {
+	const c = global.appConfig;
+	if (!c) return;
+
+	// Intervals
+	SENSOR_UPDATE_INTERVAL = c.sensorUpdateInterval || 10000;
+
+	// Demo mode
+	demoMode = c.demoMode ? 1 : 0;
+
+	// Filter alphas
+	if (c.filterAlphaPressure != null) filters.pressure.setAlpha(c.filterAlphaPressure);
+	if (c.filterAlphaO2 != null) filters.o2.setAlpha(c.filterAlphaO2);
+	if (c.filterAlphaTemperature != null) filters.temperature.setAlpha(c.filterAlphaTemperature);
+	if (c.filterAlphaHumidity != null) filters.humidity.setAlpha(c.filterAlphaHumidity);
+
+	// Valve control
+	sessionStatus.comp_offset = c.compOffset ?? sessionStatus.comp_offset;
+	sessionStatus.comp_gain = c.compGain ?? sessionStatus.comp_gain;
+	sessionStatus.comp_depth = c.compDepth ?? sessionStatus.comp_depth;
+	sessionStatus.decomp_offset = c.decompOffset ?? sessionStatus.decomp_offset;
+	sessionStatus.decomp_gain = c.decompGain ?? sessionStatus.decomp_gain;
+	sessionStatus.decomp_depth = c.decompDepth ?? sessionStatus.decomp_depth;
+	sessionStatus.minimumvalve = c.minimumValve ?? sessionStatus.minimumvalve;
+	sessionStatus.humidityAlarmLevel = c.humidityAlarmLevel ?? sessionStatus.humidityAlarmLevel;
+
+	// CloudReporter reconfigure
+	if (cloudReporter) {
+		const newEnabled = !!(c.cloudApiUrl && c.chamberApiKey);
+		cloudReporter.apiUrl = c.cloudApiUrl;
+		cloudReporter.apiKey = c.chamberApiKey;
+		cloudReporter.enabled = newEnabled;
+	}
+
+	console.log('[applyConfigToApp] Config applied live');
+};
+
 // Save last session settings to database
 async function saveLastSessionSettings(depth, duration, speed) {
 	try {
@@ -645,17 +536,32 @@ async function init() {
 	// SERVER CONFIGS
 	// ***********************************************************
 	// ***********************************************************
-	server.listen(4001, () => console.log(`Listening on port 4001`));
-
 	await loadSensorCalibrationData();
 	await loadConfigFromDB();
 	initializeO2Sensor();
 
-	// Connect to MQTT broker
-	connectMQTT();
+	// Server port from config
+	const port = (global.appConfig && global.appConfig.serverPort) || 4001;
+	server.listen(port, () => console.log(`Listening on port ${port}`));
+
+	// Initialize CloudReporter from DB config (env vars as fallback)
+	const cloudApiUrl = (global.appConfig && global.appConfig.cloudApiUrl) || process.env.CLOUD_API_URL || '';
+	const chamberApiKey = (global.appConfig && global.appConfig.chamberApiKey) || process.env.CHAMBER_API_KEY || '';
+	cloudReporter = new CloudReporter({
+		apiUrl: cloudApiUrl,
+		apiKey: chamberApiKey,
+		enabled: !!(cloudApiUrl && chamberApiKey),
+	});
+	global.cloudReporter = cloudReporter;
+
+	// Start cloud heartbeat
+	const heartbeatInterval = (global.appConfig && global.appConfig.heartbeatInterval) || 30000;
+	cloudReporter.startHeartbeat(heartbeatInterval, () => ({
+		sensorData, sessionStatus, alarmStatus, isConnectedPLC,
+	}));
 
 	try {
-		socket = io.connect('http://192.168.77.100:4000', { reconnect: true });
+		socket = io.connect('http://127.0.0.1:4000', { reconnect: true });
 		socket.on('connect', function () {
 			console.log('Connected to server');
 			if (demoMode == 0) {
@@ -808,9 +714,9 @@ async function init() {
 						: cmd;
 				const { to, cmd, url, my, timeoutMs } = dt.data || {};
 				sendCommand({
-					url: url || process.env.SIGNALING_URL || 'ws://192.168.1.12:8080/ws',
-					my: my || process.env.MY_ID || 'server-1',
-					to: to || process.env.TO_ID || 'raspi-1',
+					url: url || (global.appConfig && global.appConfig.signalingUrl) || 'ws://192.168.1.12:8080/ws',
+					my: my || (global.appConfig && global.appConfig.serverId) || 'server-1',
+					to: to || (global.appConfig && global.appConfig.targetId) || 'raspi-1',
 					command: cmd || 'play',
 					mapped: mapCmd(cmd || 'play'),
 					timeoutMs: timeoutMs || 2000,
@@ -884,22 +790,9 @@ async function init() {
 					sessionStatus.toplamSure -
 					(sessionStatus.dalisSuresi + sessionStatus.cikisSuresi);
 
-<<<<<<< HEAD
 				let treatmentSegments = createAlternatingTreatmentProfile(
 					treatmentDuration,
 					sessionStatus.setDerinlik
-=======
-				// Create alternating oxygen/air treatment segments
-				const safeTreatmentDuration = Math.max(
-					0,
-					Number.isFinite(treatmentDuration) ? treatmentDuration : 0
-				);
-				const treatmentSegments = createAlternatingTreatmentProfile(
-					safeTreatmentDuration,
-					sessionStatus.setDerinlik,
-					5,
-					15
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 				);
 
 
@@ -933,20 +826,14 @@ async function init() {
 					];
 				} 
 				// Build complete profile with descent, alternating treatment, and ascent
-				const setProfileRaw = [
+				const setProfile = [
 					[sessionStatus.dalisSuresi, sessionStatus.setDerinlik, 'air'], // Descent phase
 					...treatmentSegments, // Alternating oxygen/air treatment phases
 					[sessionStatus.cikisSuresi, 0, 'air'], // Ascent phase
 				];
 
-				// Filter out invalid/non-positive durations
-				const setProfile = setProfileRaw.filter(
-					(seg) => Array.isArray(seg) && Number.isFinite(seg[0]) && seg[0] > 0
-				);
-
 				const quickProfile = ProfileUtils.createQuickProfile(setProfile);
 				sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
-				sessionStatus.profileSteps = setProfile;
 
 				// Export profile to JSON file
 				const fs = require('fs');
@@ -977,6 +864,11 @@ async function init() {
 					speed: sessionStatus.speed,
 					toplamSure: sessionStatus.toplamSure,
 				});
+
+				// Cloud session start
+				cloudReporter.sessionStart(sessionStatus).then((cloudId) => {
+					if (cloudId) sessionStatus.cloudSessionId = cloudId;
+				});
 			} else if (dt.type == 'sessionPause') {
 				sessionStatus.status = 2;
 				sessionStatus.otomanuel = 1;
@@ -985,14 +877,10 @@ async function init() {
 				compValve(0);
 				decompValve(35);
 				compValve(0);
-<<<<<<< HEAD
 				setTimeout(() => {
 					decompValve(0);
 				}, 15000);
 
-=======
-				decompValve(0);
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 				console.log(
 					'sessionPause',
 					sessionStatus.pauseTime,
@@ -1074,7 +962,6 @@ async function init() {
 				} else if (dt.data.direction == 'backward' && dt.data.engage == false) {
 					socket.emit('writeBit', { register: 'M0303', value: 0 });
 				}
-<<<<<<< HEAD
 			} else if (dt.type == 'duration') {
 				console.log('duration', dt.data.duration);
 				sessionStatus.toplamSure = dt.data.duration;
@@ -1289,8 +1176,6 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 					type: 'ventilationStatus',
 					data: result,
 				});
-=======
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 			}
 		});
 
@@ -1488,16 +1373,13 @@ function read() {
 	// Sensor değerlerini al
 
 	socket.emit('sensorData', {
-		pressure: Number(sensorData['pressure'].toFixed(2)) || 0,
-		o2: Number(sensorData['o2'].toFixed(0)) || 0,
-		temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
-		humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
+		pressure: sensorData['pressure'],
+		o2: sensorData['o2'],
+		temperature: sensorData['temperature'],
+		humidity: sensorData['humidity'],
 		sessionStatus: sessionStatus,
 		doorStatus: sessionStatus.doorStatus,
 	});
-
-	// Publish all chamber data to MQTT
-	publishAllChamberData();
 
 	console.log(
 		'status',
@@ -1535,9 +1417,9 @@ function read() {
 		//console.log('door closing');
 		alarmSet('sessionStarting', 'Session Starting', 0);
 		sendCommand({
-			url: 'ws://192.168.77.100:8080/ws',
-			my: 'server-1',
-			to: 'raspi-1',
+			url: (global.appConfig && global.appConfig.wsCommandUrl) || 'ws://192.168.77.100:8080/ws',
+			my: (global.appConfig && global.appConfig.serverId) || 'server-1',
+			to: (global.appConfig && global.appConfig.targetId) || 'raspi-1',
 			command: 'start_session',
 			mapped: 'start_session',
 		});
@@ -1578,8 +1460,8 @@ function read() {
 
 		// Check if current and next profile points exist
 		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1])
+			sessionStatus.profile[sessionStatus.zaman] &&
+			sessionStatus.profile[sessionStatus.zaman + 1]
 		) {
 			if (
 				sessionStatus.profile[sessionStatus.zaman][1] >
@@ -1599,62 +1481,6 @@ function read() {
 			sessionStatus.grafikdurum = 0; // Default to descent when at end
 		}
 
-<<<<<<< HEAD
-=======
-		// Profil adımı değişimine göre oksijen durumunu güncelle
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-			sessionStatus.profile[sessionStatus.zaman + 1].length > 2
-		) {
-			if (
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-				sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-				sessionStatus.profile[sessionStatus.zaman + 1].length > 2
-			) {
-				if (
-					Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-					sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-					Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-					sessionStatus.profile[sessionStatus.zaman + 1].length > 2
-				) {
-					console.log(
-						sessionStatus.profile[sessionStatus.zaman][2],
-						sessionStatus.profile[sessionStatus.zaman + 1][2],
-						sessionStatus.oksijen
-					);
-				}
-			}
-
-			if (
-				sessionStatus.profile[sessionStatus.zaman][2] == 'air' &&
-				sessionStatus.profile[sessionStatus.zaman + 1][2] == 'o' &&
-				sessionStatus.oksijen == 0
-			) {
-				sessionStatus.oksijen = 1;
-				alarmSet(
-					'oxygenBreak',
-					'Treatment Starting. Please wear your mask.',
-					0
-				);
-			} else if (
-				sessionStatus.profile[sessionStatus.zaman][2] == 'o' &&
-				sessionStatus.profile[sessionStatus.zaman + 1][2] == 'air' &&
-				sessionStatus.oksijen == 1
-			) {
-				sessionStatus.oksijen = 0;
-				alarmSet(
-					'oxygenBreak',
-					'Please take off your mask. Oxygen Break Time.',
-					0
-				);
-			}
-		}
-
-		// Oksijen molası kontrolü - Düz grafik durumunda
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 		if (
 			sessionStatus.profile[sessionStatus.zaman] &&
 			sessionStatus.profile[sessionStatus.zaman + 1] &&
@@ -1702,7 +1528,6 @@ function read() {
 				'oksijenBitisZamani',
 				sessionStatus.oksijenBitisZamani
 			);
-<<<<<<< HEAD
 			oxygenClose();
 		} else if (
 			sessionStatus.profile[sessionStatus.zaman] &&
@@ -1710,40 +1535,6 @@ function read() {
 			sessionStatus.profile[sessionStatus.zaman][2] == 'o' &&
 			sessionStatus.profile[sessionStatus.zaman + 1][2] == 'air' &&
 			sessionStatus.oksijen == 1
-=======
-		} else {
-			// Düz durumdan çıkıldığında timer'ları sıfırla
-			if (
-				sessionStatus.lastdurum === 2 &&
-				sessionStatus.cikis == 0 &&
-				sessionStatus.grafikdurum == 0
-			) {
-				sessionStatus.oksijen = 0;
-				sessionStatus.oksijenBaslangicZamani = 0;
-				sessionStatus.oksijenBitisZamani = 0;
-				alarmSet(
-					'treatmenFinished',
-					'Treatment Finished. Please take off your mask. Decompression Starting.',
-					0
-				);
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-				oxygenClose();
-			}
-		}
-
-		// Check if step (adım) has changed
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			sessionStatus.adim !== sessionStatus.profile[sessionStatus.zaman][2]
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 		) {
 			sessionStatus.oksijen = 0;
 
@@ -1938,21 +1729,12 @@ function read() {
 		) {
 			// O2/Hava kontrolü
 
-<<<<<<< HEAD
 			// PID kontrolü için ortalama fark hesapla
 			var avgDifference =
 				(sessionStatus.bufferdifference[sessionStatus.zaman] +
 					sessionStatus.bufferdifference[sessionStatus.zaman - 1] +
 					sessionStatus.bufferdifference[sessionStatus.zaman - 2]) /
 				3;
-=======
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2
-		) {
-			sessionStatus.adim = sessionStatus.profile[sessionStatus.zaman][2];
-		}
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 
 			console.log('avgDiff', avgDifference.toFixed(2));
 
@@ -2072,6 +1854,18 @@ function read() {
 			//doorOpen();
 			compValve(0);
 			decompValve(90);
+
+			// Cloud session end
+			if (sessionStatus.cloudSessionId) {
+				const elapsed = sessionStatus.sessionStartTime
+					? dayjs().diff(sessionStatus.sessionStartTime, 'minute')
+					: 0;
+				cloudReporter.sessionEnd(sessionStatus.cloudSessionId, {
+					durationMinutes: elapsed,
+					status: 'completed',
+				});
+			}
+
 			sessionStatus.durum = 0;
 			sessionStatus.uyariyenile = 1;
 			sessionStatus.uyaridurum = 1;
@@ -2115,6 +1909,7 @@ function read() {
 			sessionStatus.oksijen = 0;
 			sessionStatus.oksijenBaslangicZamani = 0;
 			sessionStatus.oksijenBitisZamani = 0;
+			sessionStatus.cloudSessionId = null;
 		}
 	}
 
@@ -2185,20 +1980,12 @@ function read_demo() {
 	// Sistem aktifse kontrol et
 	if (sessionStatus.status > 0 && sessionStatus.zaman > 5) {
 		// Simulate pressure based on profile (demo mode)zaxaza
-
 		if (
 			sessionStatus.profile.length > sessionStatus.zaman &&
 			sessionStatus.profile[sessionStatus.zaman]
 		) {
-<<<<<<< HEAD
 			const rawPressure = sessionStatus.profile[sessionStatus.zaman][1];
 			sensorData['pressure'] = filters.pressure.update(rawPressure);
-=======
-			if (sessionStatus.status == 1)
-				sensorData['pressure'] = sessionStatus.profile[sessionStatus.zaman][1];
-			else if (sessionStatus.status == 2)
-				sensorData['pressure'] = sessionStatus.pauseDepth;
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 			sessionStatus.hedef =
 				sessionStatus.profile[sessionStatus.zaman][1] * 33.4;
 		} else if (
@@ -2207,11 +1994,7 @@ function read_demo() {
 		) {
 			const rawPressure =
 				sessionStatus.profile[sessionStatus.profile.length - 1][1];
-<<<<<<< HEAD
 			sensorData['pressure'] = filters.pressure.update(rawPressure);
-=======
-
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 			sessionStatus.hedef =
 				sessionStatus.profile[sessionStatus.profile.length - 1][1] * 33.4;
 		} else {
@@ -2224,16 +2007,9 @@ function read_demo() {
 		// Update session status with simulated data
 		sessionStatus.pressure = sessionStatus.hedef / 33.4;
 		sessionStatus.main_fsw = sessionStatus.hedef / 33.4;
-<<<<<<< HEAD
 		sensorData['pressure'] = filters.pressure.update(
 			sessionStatus.hedef / 33.4
 		);
-=======
-		sensorData['pressure'] = sessionStatus.hedef / 33.4;
-		if (sessionStatus.status == 2)
-			sensorData['pressure'] = sessionStatus.pauseDepth;
-		else sensorData['pressure'] = sessionStatus.hedef / 33.4;
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 
 		sessionStatus.o2 = sensorData['o2'];
 
@@ -2272,32 +2048,17 @@ function read_demo() {
 			sessionStatus.grafikdurum = 0; // Default to descent when at end
 		}
 
+		// Oksijen molası kontrolü - Düz grafik durumunda (demo mode)
 		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-			sessionStatus.profile[sessionStatus.zaman + 1].length > 2
-		) {
-			console.log(
-				sessionStatus.profile[sessionStatus.zaman][2],
-				sessionStatus.profile[sessionStatus.zaman + 1][2],
-				sessionStatus.oksijen
-			);
-		}
-
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-			sessionStatus.profile[sessionStatus.zaman + 1].length > 2
+			sessionStatus.grafikdurum === 2 &&
+			sessionStatus.otomanuel == 0 &&
+			sessionStatus.status == 1
 		) {
 			if (
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-				sessionStatus.profile[sessionStatus.zaman].length > 2 &&
-				Array.isArray(sessionStatus.profile[sessionStatus.zaman + 1]) &&
-				sessionStatus.profile[sessionStatus.zaman + 1].length > 2
+				sessionStatus.oksijen == 0 &&
+				sessionStatus.oksijenBaslangicZamani == 0 &&
+				sessionStatus.oksijenBitisZamani == 0
 			) {
-<<<<<<< HEAD
 				sessionStatus.oksijen = 1;
 				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1;
 				sessionStatus.oksijenBitisZamani = sessionStatus.zaman + 1 * 60;
@@ -2352,39 +2113,44 @@ function read_demo() {
 					sessionStatus.oksijenBitisZamani
 				);
 			}
-=======
-				if (
-					sessionStatus.profile[sessionStatus.zaman][2] == 'air' &&
-					sessionStatus.profile[sessionStatus.zaman + 1][2] == 'o' &&
-					sessionStatus.oksijen == 0
-				) {
-					sessionStatus.oksijen = 1;
-					alarmSet(
-						'oxygenBreak',
-						'Treatment Starting. Please wear your mask.',
-						0
-					);
-				} else if (
-					sessionStatus.profile[sessionStatus.zaman][2] == 'o' &&
-					sessionStatus.profile[sessionStatus.zaman + 1][2] == 'air' &&
-					sessionStatus.oksijen == 1
-				) {
-					sessionStatus.oksijen = 0;
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 
-					alarmSet(
-						'oxygenBreak',
-						'Please take off your mask. Oxygen Break Time.',
-						0
-					);
-				}
+			console.log(
+				'oksijen',
+				sessionStatus.oksijen,
+				'oksijenBaslangicZamani',
+				sessionStatus.oksijenBaslangicZamani,
+				'oksijenBitisZamani',
+				sessionStatus.oksijenBitisZamani
+			);
+		} else {
+			// Düz durumdan çıkıldığında timer'ları sıfırla
+			if (
+				sessionStatus.lastdurum === 2 &&
+				sessionStatus.cikis == 0 &&
+				sessionStatus.grafikdurum == 0
+			) {
+				sessionStatus.oksijen = 0;
+				sessionStatus.oksijenBaslangicZamani = 0;
+				sessionStatus.oksijenBitisZamani = 0;
+				alarmSet(
+					'treatmenFinished',
+					'Treatment Finished. Please take off your mask. Decompression Starting.',
+					0
+				);
+				console.log(
+					'Değişti : oksijen',
+					sessionStatus.oksijen,
+					'oksijenBaslangicZamani',
+					sessionStatus.oksijenBaslangicZamani,
+					'oksijenBitisZamani',
+					sessionStatus.oksijenBitisZamani
+				);
 			}
 		}
 
 		// Check if step (adım) has changed
 		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2 &&
+			sessionStatus.profile[sessionStatus.zaman] &&
 			sessionStatus.adim !== sessionStatus.profile[sessionStatus.zaman][2]
 		) {
 			console.log(
@@ -2404,10 +2170,7 @@ function read_demo() {
 			sessionStatus.p2counter = 0;
 		}
 
-		if (
-			Array.isArray(sessionStatus.profile[sessionStatus.zaman]) &&
-			sessionStatus.profile[sessionStatus.zaman].length > 2
-		) {
+		if (sessionStatus.profile[sessionStatus.zaman]) {
 			sessionStatus.adim = sessionStatus.profile[sessionStatus.zaman][2];
 		}
 
@@ -2580,6 +2343,18 @@ function read_demo() {
 				alarmSet('endOfSession', 'Session Finished.', 0);
 				sessionStartBit(0);
 				//doorOpen();
+
+				// Cloud session end
+				if (sessionStatus.cloudSessionId) {
+					const elapsed = sessionStatus.sessionStartTime
+						? dayjs().diff(sessionStatus.sessionStartTime, 'minute')
+						: 0;
+					cloudReporter.sessionEnd(sessionStatus.cloudSessionId, {
+						durationMinutes: elapsed,
+						status: 'completed',
+					});
+				}
+
 				sessionStatus.status = 0;
 				sessionStatus.uyariyenile = 1;
 				sessionStatus.uyaridurum = 1;
@@ -2671,8 +2446,6 @@ function read_demo() {
 		doorStatus: sessionStatus.doorStatus,
 	});
 
-	// Publish all chamber data to MQTT
-	publishAllChamberData();
 }
 
 function linearInterpolation(startValue, endValue, duration) {
@@ -2718,18 +2491,24 @@ function alarmSet(type, text, duration) {
 		},
 	});
 
-	// Publish alarm to MQTT
-	const alarmPayload = {
-		status: alarmStatus.status,
-		type: alarmStatus.type,
-		text: alarmStatus.text,
-		time: alarmStatus.time ? dayjs(alarmStatus.time).toISOString() : null,
-		duration: alarmStatus.duration,
-	};
-	publishToMQTT(`${MQTT_TOPIC_PREFIX}/alarm`, alarmPayload);
+	// Cloud alert
+	cloudReporter.alert({
+		alertType: type,
+		alertMessage: text,
+		severity: 'warning',
+		sensorSnapshot: {
+			pressure: sensorData?.pressure,
+			o2: sensorData?.o2,
+			temperature: sensorData?.temperature,
+			humidity: sensorData?.humidity,
+		},
+	});
 }
 
 function alarmClear() {
+	const prevType = alarmStatus.type;
+	const prevText = alarmStatus.text;
+
 	alarmStatus.status = 0;
 	alarmStatus.type = '';
 	alarmStatus.text = '';
@@ -2737,15 +2516,12 @@ function alarmClear() {
 	alarmStatus.duration = 0;
 	sessionStatus.patientWarning = false;
 
-	// Publish alarm clear to MQTT
-	const alarmPayload = {
-		status: alarmStatus.status,
-		type: alarmStatus.type,
-		text: alarmStatus.text,
-		time: null,
-		duration: alarmStatus.duration,
-	};
-	publishToMQTT(`${MQTT_TOPIC_PREFIX}/alarm`, alarmPayload);
+	// Cloud alert clear
+	cloudReporter.alertClear({
+		alertType: prevType,
+		alertMessage: prevText,
+		severity: 'warning',
+	});
 }
 
 function doorClose() {
@@ -3177,6 +2953,18 @@ function sessionStop() {
 		0
 	);
 
+	// Cloud session end
+	if (sessionStatus.cloudSessionId) {
+		const elapsed = sessionStatus.sessionStartTime
+			? dayjs().diff(sessionStatus.sessionStartTime, 'minute')
+			: 0;
+		cloudReporter.sessionEnd(sessionStatus.cloudSessionId, {
+			durationMinutes: elapsed,
+			status: 'stopped',
+		});
+		sessionStatus.cloudSessionId = null;
+	}
+
 	// Seans kaydını tamamla
 	completeSessionRecord('stopped');
 }
@@ -3497,37 +3285,15 @@ function setO2CalibrationPoint(point, rawValue, actualPercentage) {
  * @param {number} depth - Treatment depth
  * @returns {Array} Array of profile segments [duration, depth, gas_type]
  */
-<<<<<<< HEAD
 function createAlternatingTreatmentProfile(treatmentDuration, depth) {
 	// Guard against invalid/negative durations
 	if (typeof treatmentDuration !== 'number' || treatmentDuration <= 0) {
-=======
-function createAlternatingTreatmentProfile(
-	treatmentDuration,
-	depth,
-	oxygenDuration = 1,
-	airBreakDuration = 1
-) {
-	// Guard against invalid/negative durations
-	if (
-		!Number.isFinite(treatmentDuration) ||
-		treatmentDuration <= 0 ||
-		!Number.isFinite(oxygenDuration) ||
-		oxygenDuration <= 0 ||
-		!Number.isFinite(airBreakDuration) ||
-		airBreakDuration <= 0
-	) {
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 		return [];
 	}
 
 	const segments = [];
-<<<<<<< HEAD
 	const oxygenDuration = 20; // 15 minutes oxygen
 	const airBreakDuration = 5; // 5 minutes air break
-=======
-
->>>>>>> 4e5b18d451b978ca0e37830f23eb2e016b6991ee
 	const cycleDuration = oxygenDuration + airBreakDuration; // 20 minutes total per cycle
 
 	let remainingTime = treatmentDuration;

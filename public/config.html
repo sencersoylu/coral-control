@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chamber Config</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-deep: #060610;
+  --bg-surface: #0a0a1a;
+  --glass: rgba(255,255,255,0.04);
+  --glass-border: rgba(255,255,255,0.08);
+  --glass-hover: rgba(255,255,255,0.07);
+  --coral: #ff6b35;
+  --coral-dim: rgba(255,107,53,0.15);
+  --coral-glow: rgba(255,107,53,0.3);
+  --green: #2dd4a8;
+  --green-dim: rgba(45,212,168,0.15);
+  --red: #ff4757;
+  --red-dim: rgba(255,71,87,0.15);
+  --blue: #5b9cf6;
+  --blue-dim: rgba(91,156,246,0.12);
+  --text: #e8e8f0;
+  --text-dim: rgba(232,232,240,0.5);
+  --text-muted: rgba(232,232,240,0.3);
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Outfit', sans-serif;
+}
+
+html { font-size: 14px; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg-deep);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -40%; left: -20%;
+  width: 80vw; height: 80vw;
+  background: radial-gradient(circle, rgba(255,107,53,0.04) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -30%; right: -10%;
+  width: 60vw; height: 60vw;
+  background: radial-gradient(circle, rgba(45,212,168,0.03) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── TOP BAR ─── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 28px;
+  background: rgba(6,6,16,0.85);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.topbar-title {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  color: var(--coral);
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-title::before {
+  content: '';
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--coral);
+  box-shadow: 0 0 12px var(--coral-glow);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.btn {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 8px 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.btn-ghost {
+  background: var(--glass);
+  color: var(--text-dim);
+}
+.btn-ghost:hover { background: var(--glass-hover); color: var(--text); border-color: rgba(255,255,255,0.15); }
+
+.btn-save {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: rgba(45,212,168,0.25);
+}
+.btn-save:hover { background: rgba(45,212,168,0.25); box-shadow: 0 0 20px rgba(45,212,168,0.15); }
+
+.btn-danger {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: rgba(255,71,87,0.25);
+}
+.btn-danger:hover { background: rgba(255,71,87,0.25); box-shadow: 0 0 20px rgba(255,71,87,0.15); }
+
+.btn-coral {
+  background: var(--coral-dim);
+  color: var(--coral);
+  border-color: rgba(255,107,53,0.25);
+}
+.btn-coral:hover { background: rgba(255,107,53,0.25); box-shadow: 0 0 20px rgba(255,107,53,0.12); }
+
+/* ─── LAYOUT ─── */
+.container {
+  position: relative;
+  z-index: 1;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 20px;
+}
+
+/* ─── CARDS ─── */
+.card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  animation: card-in 0.5s ease both;
+}
+
+.card:hover {
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card:nth-child(1) { animation-delay: 0.05s; }
+.card:nth-child(2) { animation-delay: 0.1s; }
+.card:nth-child(3) { animation-delay: 0.15s; }
+.card:nth-child(4) { animation-delay: 0.2s; }
+.card:nth-child(5) { animation-delay: 0.25s; }
+.card:nth-child(6) { animation-delay: 0.3s; }
+.card:nth-child(7) { animation-delay: 0.35s; }
+.card:nth-child(8) { animation-delay: 0.4s; }
+.card:nth-child(9) { animation-delay: 0.45s; }
+.card:nth-child(10) { animation-delay: 0.5s; }
+.card:nth-child(11) { animation-delay: 0.55s; }
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.card-icon {
+  width: 32px; height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.card-icon.coral { background: var(--coral-dim); }
+.card-icon.green { background: var(--green-dim); }
+.card-icon.blue { background: var(--blue-dim); }
+.card-icon.red { background: var(--red-dim); }
+
+.card-title {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ─── FORM FIELDS ─── */
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.field-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field.full { grid-column: 1 / -1; }
+
+.field label {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="date"],
+.field select {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 400;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: rgba(255,107,53,0.4);
+  box-shadow: 0 0 0 3px rgba(255,107,53,0.08);
+}
+
+.field input::placeholder { color: var(--text-muted); }
+
+/* Range slider */
+.range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.range-wrap input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.08);
+  outline: none;
+}
+
+.range-wrap input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--coral);
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--coral-glow);
+  transition: transform 0.15s;
+}
+
+.range-wrap input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.range-val {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--coral);
+  min-width: 38px;
+  text-align: right;
+}
+
+/* Checkbox */
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.check-field input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px; height: 20px;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.check-field input[type="checkbox"]:checked {
+  background: var(--coral-dim);
+  border-color: var(--coral);
+}
+
+.check-field input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.7rem;
+  color: var(--coral);
+  font-weight: 700;
+}
+
+.check-field label {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+/* ─── SENSOR TABLE ─── */
+.sensor-table-wrap {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.sensor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.sensor-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+
+.sensor-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.sensor-table tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+.sensor-table input {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  color: var(--text);
+  outline: none;
+  width: 100%;
+  min-width: 60px;
+  transition: border-color 0.2s;
+}
+
+.sensor-table input:focus {
+  border-color: rgba(255,107,53,0.4);
+}
+
+.sensor-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* ─── VALVE SLIDERS ─── */
+.valve-section {
+  margin-top: 20px;
+}
+
+.valve-slider-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.valve-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.valve-item label {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.valve-item .range-wrap input[type="range"] {
+  background: rgba(255,255,255,0.06);
+}
+
+/* ─── TOAST ─── */
+.toast-container {
+  position: fixed;
+  top: 80px;
+  right: 28px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  padding: 12px 20px;
+  border-radius: 10px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  animation: toast-in 0.3s ease, toast-out 0.3s ease 2.7s forwards;
+  max-width: 360px;
+}
+
+.toast.success {
+  background: rgba(45,212,168,0.15);
+  color: var(--green);
+  border-color: rgba(45,212,168,0.25);
+}
+
+.toast.error {
+  background: rgba(255,71,87,0.15);
+  color: var(--red);
+  border-color: rgba(255,71,87,0.25);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translateY(-10px); }
+}
+
+/* ─── WIDE CARD ─── */
+.card.wide { grid-column: 1 / -1; }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 860px) {
+  .grid { grid-template-columns: 1fr; }
+  .topbar { flex-wrap: wrap; padding: 14px 16px; gap: 8px; }
+  .topbar-title { width: 100%; }
+  .container { padding: 16px; }
+  .field-grid { grid-template-columns: 1fr; }
+  .valve-slider-group { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">Chamber Config</div>
+  <button class="btn btn-ghost" onclick="loadConfig()">Reload</button>
+  <button class="btn btn-save" onclick="saveConfig()">Save Changes</button>
+  <button class="btn btn-danger" onclick="resetConfig()">Reset Defaults</button>
+</div>
+
+<div class="container">
+  <div class="grid">
+
+    <!-- 1. Project Info -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon coral">⬡</div>
+        <div class="card-title">Project Info</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>Project ID</label>
+          <input type="text" id="projectID" placeholder="ARC-02">
+        </div>
+        <div class="field">
+          <label>Chamber Type</label>
+          <input type="text" id="chamberType" placeholder="monoplace">
+        </div>
+        <div class="field">
+          <label>Installation Date</label>
+          <input type="date" id="installationDate">
+        </div>
+        <div class="field">
+          <label>Session Counter</label>
+          <input type="number" id="sessionCounter" placeholder="0">
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. O2 Calibration -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon blue">O₂</div>
+        <div class="card-title">O2 Calibration</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>Point 0% Raw</label>
+          <input type="number" id="o2Point0Raw" placeholder="0">
+        </div>
+        <div class="field">
+          <label>Point 0% Percentage</label>
+          <input type="number" step="0.1" id="o2Point0Percentage" placeholder="0">
+        </div>
+        <div class="field">
+          <label>Point 21% Raw</label>
+          <input type="number" id="o2Point21Raw" placeholder="828">
+        </div>
+        <div class="field">
+          <label>Point 21% Percentage</label>
+          <input type="number" step="0.1" id="o2Point21Percentage" placeholder="21">
+        </div>
+        <div class="field">
+          <label>Point 100% Raw</label>
+          <input type="number" id="o2Point100Raw" placeholder="16383">
+        </div>
+        <div class="field">
+          <label>Point 100% Percentage</label>
+          <input type="number" step="0.1" id="o2Point100Percentage" placeholder="100">
+        </div>
+        <div class="field">
+          <label>Alarm Value (%)</label>
+          <input type="number" step="0.1" id="o2AlarmValuePercentage" placeholder="23.5">
+        </div>
+        <div class="field">
+          <div class="check-field">
+            <input type="checkbox" id="o2AlarmOn">
+            <label for="o2AlarmOn">O2 Alarm Active</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Filter Alpha -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon green">α</div>
+        <div class="card-title">Filter Alpha</div>
+      </div>
+      <div class="field-grid single">
+        <div class="field">
+          <label>Pressure</label>
+          <div class="range-wrap">
+            <input type="range" id="filterAlphaPressure" min="0" max="1" step="0.01" value="0.35" oninput="this.nextElementSibling.textContent=this.value">
+            <span class="range-val">0.35</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>O2</label>
+          <div class="range-wrap">
+            <input type="range" id="filterAlphaO2" min="0" max="1" step="0.01" value="0.2" oninput="this.nextElementSibling.textContent=this.value">
+            <span class="range-val">0.20</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Temperature</label>
+          <div class="range-wrap">
+            <input type="range" id="filterAlphaTemperature" min="0" max="1" step="0.01" value="0.25" oninput="this.nextElementSibling.textContent=this.value">
+            <span class="range-val">0.25</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Humidity</label>
+          <div class="range-wrap">
+            <input type="range" id="filterAlphaHumidity" min="0" max="1" step="0.01" value="0.25" oninput="this.nextElementSibling.textContent=this.value">
+            <span class="range-val">0.25</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Compressor Control -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon coral">⚙</div>
+        <div class="card-title">Compressor Control</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>Comp Offset</label>
+          <input type="number" step="0.1" id="compOffset" placeholder="14">
+        </div>
+        <div class="field">
+          <label>Comp Gain</label>
+          <input type="number" step="0.1" id="compGain" placeholder="8">
+        </div>
+        <div class="field">
+          <label>Comp Depth</label>
+          <input type="number" step="0.1" id="compDepth" placeholder="100">
+        </div>
+        <div class="field">
+          <label>Decomp Offset</label>
+          <input type="number" step="0.1" id="decompOffset" placeholder="14">
+        </div>
+        <div class="field">
+          <label>Decomp Gain</label>
+          <input type="number" step="0.1" id="decompGain" placeholder="7">
+        </div>
+        <div class="field">
+          <label>Decomp Depth</label>
+          <input type="number" step="0.1" id="decompDepth" placeholder="100">
+        </div>
+        <div class="field">
+          <label>Minimum Valve</label>
+          <input type="number" id="minimumValve" placeholder="12">
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Default Session -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon blue">▶</div>
+        <div class="card-title">Default Session</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>Dalış Süresi (dk)</label>
+          <input type="number" id="defaultDalisSuresi" placeholder="10">
+        </div>
+        <div class="field">
+          <label>Çıkış Süresi (dk)</label>
+          <input type="number" id="defaultCikisSuresi" placeholder="10">
+        </div>
+        <div class="field">
+          <label>Toplam Süre (dk)</label>
+          <input type="number" id="defaultToplamSure" placeholder="60">
+        </div>
+        <div class="field">
+          <label>Set Derinlik (bar)</label>
+          <input type="number" step="0.1" id="defaultSetDerinlik" placeholder="1.4">
+        </div>
+        <div class="field">
+          <label>Hız</label>
+          <select id="defaultSpeed">
+            <option value="1">1 — Yavaş</option>
+            <option value="2">2 — Normal</option>
+            <option value="3">3 — Hızlı</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Alarm & Oxygen -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon red">⚠</div>
+        <div class="card-title">Alarm & Oxygen</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>High O2 Level (%)</label>
+          <input type="number" step="0.1" id="highO2Level" placeholder="23">
+        </div>
+        <div class="field">
+          <label>Humidity Alarm Level (%)</label>
+          <input type="number" id="humidityAlarmLevel" placeholder="70">
+        </div>
+        <div class="field">
+          <label>Oksijen Süresi (dk)</label>
+          <input type="number" id="oxygenDuration" placeholder="15">
+        </div>
+        <div class="field">
+          <label>Hava Molası (dk)</label>
+          <input type="number" id="airBreakDuration" placeholder="5">
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Cloud & Network -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon blue">☁</div>
+        <div class="card-title">Cloud & Network</div>
+      </div>
+      <div class="field-grid">
+        <div class="field full">
+          <label>Cloud API URL</label>
+          <input type="text" id="cloudApiUrl" placeholder="https://your-api.supabase.co/functions/v1">
+        </div>
+        <div class="field full">
+          <label>Chamber API Key</label>
+          <input type="text" id="chamberApiKey" placeholder="CHB-001-XXXXXXXX">
+        </div>
+        <div class="field full">
+          <label>Signaling URL</label>
+          <input type="text" id="signalingUrl" placeholder="ws://192.168.1.12:8080/ws">
+        </div>
+        <div class="field full">
+          <label>WS Command URL</label>
+          <input type="text" id="wsCommandUrl" placeholder="ws://192.168.77.100:8080/ws">
+        </div>
+        <div class="field">
+          <label>Server ID</label>
+          <input type="text" id="serverId" placeholder="server-1">
+        </div>
+        <div class="field">
+          <label>Target ID</label>
+          <input type="text" id="targetId" placeholder="raspi-1">
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. PLC & System -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon green">◉</div>
+        <div class="card-title">PLC & System</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>PLC IP Address</label>
+          <input type="text" id="plcIpAddress" placeholder="192.168.77.100">
+        </div>
+        <div class="field">
+          <label>PLC Port</label>
+          <input type="number" id="plcPort" placeholder="4000">
+        </div>
+        <div class="field">
+          <label>Comp Valve Analog</label>
+          <input type="number" id="compressionValveAnalog" placeholder="9000">
+        </div>
+        <div class="field">
+          <label>Decomp Valve Analog</label>
+          <input type="number" id="decompressionValveAnalog" placeholder="3500">
+        </div>
+        <div class="field">
+          <label>Server Port</label>
+          <input type="number" id="serverPort" placeholder="4001">
+        </div>
+        <div class="field">
+          <label>JWT Secret</label>
+          <input type="text" id="jwtSecret" placeholder="coral-secret">
+        </div>
+        <div class="field">
+          <label>Sensor Update (ms)</label>
+          <input type="number" id="sensorUpdateInterval" placeholder="10000">
+        </div>
+        <div class="field">
+          <label>Heartbeat (ms)</label>
+          <input type="number" id="heartbeatInterval" placeholder="30000">
+        </div>
+        <div class="field full">
+          <div class="check-field">
+            <input type="checkbox" id="demoMode">
+            <label for="demoMode">Demo Mode</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Sensor Calibration -->
+    <div class="card wide">
+      <div class="card-header">
+        <div class="card-icon coral">◈</div>
+        <div class="card-title">Sensor Calibration</div>
+      </div>
+      <div class="sensor-table-wrap">
+        <table class="sensor-table" id="sensorTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Text</th>
+              <th>Symbol</th>
+              <th>Lower Limit</th>
+              <th>Upper Limit</th>
+              <th>Analog Lower</th>
+              <th>Analog Upper</th>
+              <th>Decimal</th>
+              <th>Offset</th>
+            </tr>
+          </thead>
+          <tbody id="sensorTableBody"></tbody>
+        </table>
+      </div>
+      <div class="sensor-actions">
+        <button class="btn btn-save" onclick="saveSensors()">Save Sensors</button>
+        <button class="btn btn-ghost" onclick="loadSensors()">Reload Sensors</button>
+      </div>
+    </div>
+
+    <!-- 9. Manual Valve Control -->
+    <div class="card wide valve-section">
+      <div class="card-header">
+        <div class="card-icon blue">⇅</div>
+        <div class="card-title">Manual Valve Control</div>
+      </div>
+      <div class="valve-slider-group">
+        <div class="valve-item">
+          <label>Compression Valve</label>
+          <div class="range-wrap">
+            <input type="range" id="valveComp" min="0" max="16383" step="1" value="0" oninput="handleValve('comp', this.value); this.nextElementSibling.textContent=this.value">
+            <span class="range-val">0</span>
+          </div>
+        </div>
+        <div class="valve-item">
+          <label>Decompression Valve</label>
+          <div class="range-wrap">
+            <input type="range" id="valveDecomp" min="0" max="16383" step="1" value="0" oninput="handleValve('decomp', this.value); this.nextElementSibling.textContent=this.value">
+            <span class="range-val">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const API_BASE = window.location.origin;
+let ioSocket = null;
+
+// ─── TOAST ───
+function toast(msg, type = 'success') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+
+// ─── CONFIG FIELD MAPPING ───
+const configFields = [
+  'projectID', 'chamberType', 'installationDate', 'sessionCounter',
+  'o2Point0Raw', 'o2Point0Percentage', 'o2Point21Raw', 'o2Point21Percentage',
+  'o2Point100Raw', 'o2Point100Percentage', 'o2AlarmValuePercentage',
+  'filterAlphaPressure', 'filterAlphaO2', 'filterAlphaTemperature', 'filterAlphaHumidity',
+  'compOffset', 'compGain', 'compDepth', 'decompOffset', 'decompGain', 'decompDepth', 'minimumValve',
+  'defaultDalisSuresi', 'defaultCikisSuresi', 'defaultToplamSure', 'defaultSetDerinlik', 'defaultSpeed',
+  'highO2Level', 'humidityAlarmLevel', 'oxygenDuration', 'airBreakDuration',
+  'cloudApiUrl', 'chamberApiKey', 'signalingUrl', 'wsCommandUrl', 'serverId', 'targetId',
+  'plcIpAddress', 'plcPort', 'compressionValveAnalog', 'decompressionValveAnalog',
+  'jwtSecret', 'serverPort', 'sensorUpdateInterval', 'heartbeatInterval',
+];
+const checkboxFields = ['o2AlarmOn', 'demoMode'];
+const rangeFields = ['filterAlphaPressure', 'filterAlphaO2', 'filterAlphaTemperature', 'filterAlphaHumidity'];
+
+// ─── LOAD CONFIG ───
+async function loadConfig() {
+  try {
+    const res = await fetch(API_BASE + '/config/getConfig');
+    const json = await res.json();
+    const data = json.data || json;
+
+    configFields.forEach(f => {
+      const el = document.getElementById(f);
+      if (!el) return;
+      let val = data[f];
+      if (val === null || val === undefined) val = '';
+      if (f === 'installationDate' && val) {
+        val = val.substring(0, 10);
+      }
+      el.value = val;
+      // Update range display
+      if (rangeFields.includes(f)) {
+        const span = el.nextElementSibling;
+        if (span) span.textContent = val || el.value;
+      }
+    });
+
+    checkboxFields.forEach(f => {
+      const el = document.getElementById(f);
+      if (el) el.checked = !!data[f];
+    });
+
+    toast('Config loaded');
+  } catch (e) {
+    toast('Failed to load config: ' + e.message, 'error');
+  }
+}
+
+// ─── SAVE CONFIG ───
+async function saveConfig() {
+  try {
+    const body = {};
+
+    configFields.forEach(f => {
+      const el = document.getElementById(f);
+      if (!el) return;
+      let val = el.value;
+      if (el.type === 'number' || rangeFields.includes(f)) {
+        val = val === '' ? null : Number(val);
+      }
+      body[f] = val;
+    });
+
+    checkboxFields.forEach(f => {
+      const el = document.getElementById(f);
+      if (el) body[f] = el.checked;
+    });
+
+    const res = await fetch(API_BASE + '/config/updateConfig', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (json.success) {
+      toast('Config saved');
+    } else {
+      toast('Save failed', 'error');
+    }
+  } catch (e) {
+    toast('Save error: ' + e.message, 'error');
+  }
+}
+
+// ─── RESET CONFIG ───
+async function resetConfig() {
+  if (!confirm('Reset all config to defaults? This cannot be undone.')) return;
+  try {
+    const res = await fetch(API_BASE + '/config/resetConfig', { method: 'POST' });
+    const json = await res.json();
+    if (json.success) {
+      toast('Config reset to defaults');
+      await loadConfig();
+    } else {
+      toast('Reset failed', 'error');
+    }
+  } catch (e) {
+    toast('Reset error: ' + e.message, 'error');
+  }
+}
+
+// ─── LOAD SENSORS ───
+async function loadSensors() {
+  try {
+    const res = await fetch(API_BASE + '/sensors/list');
+    const json = await res.json();
+    const sensors = json.data || json;
+    const tbody = document.getElementById('sensorTableBody');
+    tbody.innerHTML = '';
+
+    if (!Array.isArray(sensors)) return;
+
+    sensors.forEach(s => {
+      const tr = document.createElement('tr');
+      tr.dataset.sensorId = s.sensorID;
+      tr.innerHTML = `
+        <td>${s.sensorID}</td>
+        <td><input type="text" data-field="sensorName" value="${s.sensorName || ''}"></td>
+        <td><input type="text" data-field="sensorText" value="${s.sensorText || ''}"></td>
+        <td><input type="text" data-field="sensorSymbol" value="${s.sensorSymbol || ''}" style="width:50px"></td>
+        <td><input type="number" data-field="sensorLowerLimit" value="${s.sensorLowerLimit ?? ''}" step="any"></td>
+        <td><input type="number" data-field="sensorUpperLimit" value="${s.sensorUpperLimit ?? ''}" step="any"></td>
+        <td><input type="number" data-field="sensorAnalogLower" value="${s.sensorAnalogLower ?? ''}"></td>
+        <td><input type="number" data-field="sensorAnalogUpper" value="${s.sensorAnalogUpper ?? ''}"></td>
+        <td><input type="number" data-field="sensorDecimal" value="${s.sensorDecimal ?? ''}" style="width:50px"></td>
+        <td><input type="number" data-field="sensorOffset" value="${s.sensorOffset ?? ''}" step="any"></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    toast('Sensors loaded');
+  } catch (e) {
+    toast('Failed to load sensors: ' + e.message, 'error');
+  }
+}
+
+// ─── SAVE SENSORS ───
+async function saveSensors() {
+  try {
+    const rows = document.querySelectorAll('#sensorTableBody tr');
+    const sensors = [];
+
+    rows.forEach(tr => {
+      const sensorID = Number(tr.dataset.sensorId);
+      const obj = { sensorID };
+      tr.querySelectorAll('input').forEach(inp => {
+        const field = inp.dataset.field;
+        if (!field) return;
+        let val = inp.value;
+        if (inp.type === 'number') val = val === '' ? null : Number(val);
+        obj[field] = val;
+      });
+      sensors.push(obj);
+    });
+
+    const res = await fetch(API_BASE + '/sensors/bulk-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sensors }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      toast('Sensors saved');
+    } else {
+      toast('Save sensors failed', 'error');
+    }
+  } catch (e) {
+    toast('Save sensors error: ' + e.message, 'error');
+  }
+}
+
+// ─── VALVE CONTROL ───
+function handleValve(type, value) {
+  if (!ioSocket || !ioSocket.connected) return;
+  const evType = type === 'comp' ? 'compValve' : 'decompValve';
+  ioSocket.emit('chamberControl', { type: evType, data: { vana: Number(value) } });
+}
+
+// ─── INIT ───
+document.addEventListener('DOMContentLoaded', () => {
+  loadConfig();
+  loadSensors();
+
+  // Socket.IO
+  if (typeof io !== 'undefined') {
+    try {
+      ioSocket = io(API_BASE);
+      ioSocket.on('connect', () => console.log('Socket.IO connected'));
+    } catch (e) {
+      console.warn('Socket.IO not available:', e);
+    }
+  }
+});
+</script>
+</body>
+</html>
