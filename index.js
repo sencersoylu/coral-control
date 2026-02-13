@@ -2437,14 +2437,16 @@ function read_demo() {
 		}
 	}
 
-	socket.emit('sensorData', {
-		pressure: Number(sensorData['pressure'].toFixed(2)) || 0,
-		o2: Number(sensorData['o2'].toFixed(0)) || 0,
-		temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
-		humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
-		sessionStatus: sessionStatus,
-		doorStatus: sessionStatus.doorStatus,
-	});
+	if (socket) {
+		socket.emit('sensorData', {
+			pressure: Number(sensorData['pressure'].toFixed(2)) || 0,
+			o2: Number(sensorData['o2'].toFixed(0)) || 0,
+			temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
+			humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
+			sessionStatus: sessionStatus,
+			doorStatus: sessionStatus.doorStatus,
+		});
+	}
 
 }
 
