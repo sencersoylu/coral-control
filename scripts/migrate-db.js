@@ -113,6 +113,39 @@ async function migrateDatabase() {
 		}
 
 		// ============================================
+		// SESSION_SENSOR_LOGS TABLOSU GÜNCELLEMELERİ
+		// ============================================
+		console.log('\n📊 SessionSensorLogs tablosu kontrol ediliyor...');
+		const sensorLogsTableName = db.sessionSensorLogs.getTableName();
+		let sensorLogsTableDesc;
+		try {
+			sensorLogsTableDesc = await queryInterface.describeTable(sensorLogsTableName);
+		} catch (e) {
+			console.log('  ⚠️  SessionSensorLogs tablosu henüz oluşturulmamış');
+			sensorLogsTableDesc = {};
+		}
+
+		const newSensorLogColumns = {
+			compValveAngle: { type: Sequelize.FLOAT, defaultValue: null },
+			decompValveAngle: { type: Sequelize.FLOAT, defaultValue: null },
+			pressureDifference: { type: Sequelize.FLOAT, defaultValue: null },
+			ventilationMode: { type: Sequelize.INTEGER, defaultValue: null },
+		};
+
+		for (const [colName, colDef] of Object.entries(newSensorLogColumns)) {
+			if (sensorLogsTableDesc && !sensorLogsTableDesc[colName]) {
+				console.log(`  ➕ ${colName} kolonu ekleniyor...`);
+				await queryInterface.addColumn(sensorLogsTableName, colName, {
+					...colDef,
+					allowNull: true,
+				});
+				console.log(`  ✅ ${colName} kolonu eklendi`);
+			} else if (sensorLogsTableDesc && sensorLogsTableDesc[colName]) {
+				console.log(`  ✓ ${colName} kolonu zaten mevcut`);
+			}
+		}
+
+		// ============================================
 		// TABLO SENKRONİZASYONU (Sadece yeni tablolar için)
 		// ============================================
 		console.log('\n🔄 Yeni tablolar oluşturuluyor (varsa)...');

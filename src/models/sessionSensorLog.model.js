@@ -53,6 +53,26 @@ module.exports = (sequelize, Sequelize) => {
 				allowNull: true,
 				comment: 'Nem (%)',
 			},
+			compValveAngle: {
+				type: Sequelize.FLOAT,
+				allowNull: true,
+				comment: 'Comp vana açıklık derecesi (0-90°)',
+			},
+			decompValveAngle: {
+				type: Sequelize.FLOAT,
+				allowNull: true,
+				comment: 'Decomp vana açıklık derecesi (0-90°)',
+			},
+			pressureDifference: {
+				type: Sequelize.FLOAT,
+				allowNull: true,
+				comment: 'Basınç farkı: hedef - gerçek (bar)',
+			},
+			ventilationMode: {
+				type: Sequelize.INTEGER,
+				allowNull: true,
+				comment: 'Ventilasyon modu (0-3)',
+			},
 		},
 		{
 			indexes: [

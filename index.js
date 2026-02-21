@@ -156,6 +156,9 @@ const allRoutes = require('./src/routes');
 
 let sensorData = {};
 
+let currentCompValveAngle = 0;
+let currentDecompValveAngle = 0;
+
 let o2Timer = null;
 
 // O2 Kalibrasyon verilerini saklamak için obje
@@ -2659,6 +2662,7 @@ function compValve(angle) {
 	if (angle > 90) angle = 90;
 	if (angle < 0) angle = 0;
 	angle = Math.round(angle);
+	currentCompValveAngle = angle;
 	console.log('compValve', angle);
 
 	// var send = angle * 364.08; //(32767/90derece)
@@ -2687,10 +2691,11 @@ function drainOff() {
 
 function decompValve(angle) {
 	angle = Math.round(angle);
-	console.log('decompvalve ', angle);
 
 	if (angle > 90) angle = 90;
 	if (angle < 0) angle = 0;
+	currentDecompValveAngle = angle;
+	console.log('decompvalve ', angle);
 
 	// var send = angle * 364.08; //(32767/90derece)
 	// send = send.toFixed(0);
@@ -3447,6 +3452,10 @@ async function logSessionSensorData() {
 			o2: sensorData['o2'] || 0,
 			temperature: sensorData['temperature'] || 0,
 			humidity: sensorData['humidity'] || 0,
+			compValveAngle: currentCompValveAngle,
+			decompValveAngle: currentDecompValveAngle,
+			pressureDifference: parseFloat((targetPressure - (sensorData['pressure'] || 0)).toFixed(4)),
+			ventilationMode: sessionStatus.ventil || 0,
 		});
 	} catch (error) {
 		console.error('Error logging sensor data:', error);
