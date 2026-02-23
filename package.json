@@ -7,7 +7,9 @@
     "start": "nodemon index.js",
     "db:create": "node src/config/sequelize.js",
     "db:migrate": "node scripts/migrate-db.js",
-    "seed:admin": "node scripts/createAdminUser.js"
+    "seed:admin": "node scripts/createAdminUser.js",
+    "rebuild": "npm rebuild sqlite3",
+    "postinstall": "npm rebuild sqlite3"
   },
   "keywords": [],
   "author": "",
