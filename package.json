@@ -24,6 +24,7 @@
     "express": "^4.17.3",
     "highcharts-export-server": "^5.0.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
     "puppeteer": "^24.12.1",
     "redis": "^4.7.1",
     "sequelize": "^6.17.0",

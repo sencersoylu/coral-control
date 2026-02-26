@@ -724,7 +724,7 @@ async function init() {
 						: cmd;
 				const { to, cmd, url, my, timeoutMs } = dt.data || {};
 				sendCommand({
-					url: url || (global.appConfig && global.appConfig.signalingUrl) || 'ws://192.168.1.12:8080/ws',
+					url: url || (global.appConfig && global.appConfig.signalingUrl) || 'ws://192.168.77.100:8080/ws',
 					my: my || (global.appConfig && global.appConfig.serverId) || 'server-1',
 					to: to || (global.appConfig && global.appConfig.targetId) || 'raspi-1',
 					command: cmd || 'play',

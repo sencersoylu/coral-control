@@ -13,6 +13,7 @@ router.use([
 	require('./users.js'),
 	require('./sessions.js'),
 	require('./config.js'),
+	require('./update.js'),
 ]);
 
 // Test endpoint to create sample session profile
