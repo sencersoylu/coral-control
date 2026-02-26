@@ -27,7 +27,7 @@ const connections = []; // view soket bağlantılarının tutulduğu array
 let isWorking = 0;
 let isConnectedPLC = 0;
 let sensorCalibrationData = {}; // Object to store all sensor calibration data
-let demoMode = 1;
+let demoMode = 0;
 let currentSessionRecordId = null; // Aktif seans kaydı ID'si
 let currentLoggedInUserId = null; // Giriş yapmış kullanıcı ID'si
 let lastSensorUpdateTime = 0; // Son sensör güncelleme zamanı (timestamp)
@@ -137,9 +137,15 @@ async function insertDefaultSensorData() {
 	// SQLite: Foreign key constraint'leri geçici olarak devre dışı bırak
 	await db.sequelize.query('PRAGMA foreign_keys = OFF;');
 	
-	// Eski backup tablolarını temizle
+	// Eski backup tablolarını temizle (sync alter stratejisi bunları bırakabiliyor)
 	try {
-		await db.sequelize.query('DROP TABLE IF EXISTS Users_backup;');
+		const tables = await db.sequelize.query(
+			"SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_backup';",
+			{ type: db.sequelize.QueryTypes.SELECT }
+		);
+		for (const table of tables) {
+			await db.sequelize.query(`DROP TABLE IF EXISTS \`${table.name}\`;`);
+		}
 	} catch (e) {
 		// Tablo yoksa hata vermesin
 	}
@@ -565,6 +571,7 @@ async function init() {
 
 	try {
 		socket = io.connect('http://127.0.0.1:4000', { reconnect: true });
+		global.socket = socket; // Expose for routes (e.g. appUpdate push)
 		socket.on('connect', function () {
 			console.log('Connected to server');
 			if (demoMode == 0) {
@@ -1375,14 +1382,16 @@ setInterval(() => {
 function read() {
 	// Sensor değerlerini al
 
-	socket.emit('sensorData', {
-		pressure: sensorData['pressure'],
-		o2: sensorData['o2'],
-		temperature: sensorData['temperature'],
-		humidity: sensorData['humidity'],
-		sessionStatus: sessionStatus,
-		doorStatus: sessionStatus.doorStatus,
-	});
+	if (socket) {
+		socket.emit('sensorData', {
+			pressure: sensorData['pressure'],
+			o2: sensorData['o2'],
+			temperature: sensorData['temperature'],
+			humidity: sensorData['humidity'],
+			sessionStatus: sessionStatus,
+			doorStatus: sessionStatus.doorStatus,
+		});
+	}
 
 	console.log(
 		'status',
