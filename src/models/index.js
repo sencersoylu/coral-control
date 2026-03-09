@@ -3,7 +3,10 @@ const Sequelize = require('sequelize');
 const sequelize = new Sequelize({
 	dialect: 'sqlite',
 	storage: './coral.sqlite',
+	logging: false,
 });
+
+sequelize.query('PRAGMA journal_mode = WAL;');
 
 const db = {};
 

@@ -22,6 +22,7 @@ const bodyParser = require('body-parser');
 const SensorCalibration = require('./o2_calibration');
 const { sendCommand } = require('./src/ws/client');
 const CloudReporter = require('./cloud_reporter');
+const AlarmManager = require('./src/alarm-manager');
 
 const connections = []; // view soket bağlantılarının tutulduğu array
 let isWorking = 0;
@@ -133,28 +134,21 @@ async function insertDefaultSensorData() {
 }
 
 // Initialize database and start application
+const migrateDatabase = require('./scripts/migrate-db');
+
 (async () => {
-	// SQLite: Foreign key constraint'leri geçici olarak devre dışı bırak
-	await db.sequelize.query('PRAGMA foreign_keys = OFF;');
-	
-	// Eski backup tablolarını temizle (sync alter stratejisi bunları bırakabiliyor)
-	try {
-		const tables = await db.sequelize.query(
-			"SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_backup';",
-			{ type: db.sequelize.QueryTypes.SELECT }
-		);
-		for (const table of tables) {
-			await db.sequelize.query(`DROP TABLE IF EXISTS \`${table.name}\`;`);
-		}
-	} catch (e) {
-		// Tablo yoksa hata vermesin
+	const dbExists = fs.existsSync('./coral.sqlite');
+
+	if (!dbExists) {
+		console.log('Database not found, creating tables...');
+		await db.sequelize.sync({ force: true });
+		console.log('Database tables created.');
+	} else {
+		console.log('Running database migrations...');
+		await migrateDatabase({ closeConnection: false });
+		console.log('Database migrations completed.');
 	}
-	
-	await db.sequelize.sync({ alter: true });
-	
-	// Foreign key constraint'leri tekrar aktif et
-	await db.sequelize.query('PRAGMA foreign_keys = ON;');
-	
+
 	//await insertDefaultSensorData();
 	init();
 })();
@@ -363,13 +357,14 @@ function computePressurizationRate(seconds = 60) {
 	return (delta / windowSize) * 60; // fsw per minute
 }
 
-let alarmStatus = {
-	status: 0,
-	type: '',
-	text: '',
-	time: 0,
-	duration: 0,
-};
+const alarmManager = new AlarmManager({
+	socket: null,
+	cloudReporter: null,
+	getSensorData: () => sensorData,
+});
+
+// Backward-compatible alarmStatus getter
+let alarmStatus = alarmManager.getStatus();
 
 // Load config values from database
 async function loadConfigFromDB() {
@@ -562,16 +557,19 @@ async function init() {
 		enabled: !!(cloudApiUrl && chamberApiKey),
 	});
 	global.cloudReporter = cloudReporter;
+	alarmManager.cloudReporter = cloudReporter;
 
 	// Start cloud heartbeat
 	const heartbeatInterval = (global.appConfig && global.appConfig.heartbeatInterval) || 30000;
 	cloudReporter.startHeartbeat(heartbeatInterval, () => ({
-		sensorData, sessionStatus, alarmStatus, isConnectedPLC,
+		sensorData, sessionStatus, alarmStatus: alarmManager.getStatus(), isConnectedPLC,
 	}));
 
+	let liveBitInterval = null;
 	try {
 		socket = io.connect('http://127.0.0.1:4000', { reconnect: true });
 		global.socket = socket; // Expose for routes (e.g. appUpdate push)
+		alarmManager.setSocket(socket);
 		socket.on('connect', function () {
 			console.log('Connected to server');
 			if (demoMode == 0) {
@@ -581,7 +579,8 @@ async function init() {
 				sessionStartBit(0);
 				oxygenClose();
 
-				setInterval(() => {
+				if (liveBitInterval) clearInterval(liveBitInterval);
+				liveBitInterval = setInterval(() => {
 					liveBit();
 				}, 3000);
 			}
@@ -758,12 +757,11 @@ async function init() {
 				return;
 			}
 			if (dt.type == 'alarm') {
-				if (
-					dt.data &&
-					dt.data.alarmStatus &&
-					typeof dt.data.alarmStatus === 'object'
-				) {
-					alarmStatus = { ...alarmStatus, ...dt.data.alarmStatus };
+				if (dt.data && dt.data.alarmStatus && typeof dt.data.alarmStatus === 'object') {
+					const a = dt.data.alarmStatus;
+					if (a.type && a.text) {
+						alarmSet(a.type, a.text, a.duration || 0);
+					}
 				}
 			} else if (dt.type == 'alarmClear') {
 				alarmClear();
@@ -845,11 +843,7 @@ async function init() {
 				const quickProfile = ProfileUtils.createQuickProfile(setProfile);
 				sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
 
-				// Export profile to JSON file
-				const fs = require('fs');
-				const profileData = JSON.stringify(sessionStatus.profile, null, 2);
-				fs.writeFileSync('session_profile.json', profileData);
-
+	
 				console.log(sessionStatus.profile);
 
 				sessionStatus.status = 1;
@@ -1343,25 +1337,11 @@ setInterval(() => {
 	if (demoMode == 0) {
 		read();
 
-		if (
-			sensorData['o2'] > o2CalibrationData.o2AlarmValuePercentage &&
-			!sessionStatus.higho2
-		) {
+		if (sensorData['o2'] > o2CalibrationData.o2AlarmValuePercentage) {
 			alarmSet('highO2', 'High O₂ level, ventilate the chamber.', 0);
-			sessionStatus.higho2 = true;
-			setTimeout(() => {
-				sessionStatus.higho2 = false;
-			}, 60000 * 10);
 		}
-		if (
-			sensorData['humidity'] > sessionStatus.humidityAlarmLevel &&
-			!sessionStatus.highHumidity
-		) {
+		if (sensorData['humidity'] > sessionStatus.humidityAlarmLevel) {
 			alarmSet('highHumidity', 'High Humidity, ventilate the chamber.', 0);
-			sessionStatus.highHumidity = true;
-			setTimeout(() => {
-				sessionStatus.highHumidity = false;
-			}, 60000 * 10);
 		}
 	} else {
 		// Demo modunda da aynı alan adlarında yumuşatılmış değerler gönder
@@ -1655,6 +1635,11 @@ function read() {
 		parseFloat(sessionStatus.hedef) - parseFloat(sessionStatus.main_fsw);
 	sessionStatus.bufferdifference[sessionStatus.zaman] = difference;
 	sessionStatus.olcum.push(sessionStatus.main_fsw);
+	if (sessionStatus.olcum.length > 300) sessionStatus.olcum.shift();
+	if (Object.keys(sessionStatus.bufferdifference).length > 300) {
+		const keys = Object.keys(sessionStatus.bufferdifference).sort((a, b) => a - b);
+		keys.slice(0, keys.length - 300).forEach(k => delete sessionStatus.bufferdifference[k]);
+	}
 
 	// Update pressurization rate metrics
 	const rateFsw = computePressurizationRate(60);
@@ -2201,6 +2186,11 @@ function read_demo() {
 			parseFloat(sessionStatus.hedef) - parseFloat(sessionStatus.main_fsw);
 		sessionStatus.bufferdifference[sessionStatus.zaman] = difference;
 		sessionStatus.olcum.push(sessionStatus.main_fsw);
+		if (sessionStatus.olcum.length > 300) sessionStatus.olcum.shift();
+		if (Object.keys(sessionStatus.bufferdifference).length > 300) {
+			const keys = Object.keys(sessionStatus.bufferdifference).sort((a, b) => a - b);
+			keys.slice(0, keys.length - 300).forEach(k => delete sessionStatus.bufferdifference[k]);
+		}
 
 		// Update pressurization rate metrics (demo flow)
 		const rateFsw = computePressurizationRate(60);
@@ -2492,50 +2482,18 @@ function profileGenerate(dalisSuresi, cikisSuresi, toplamSure, derinlik) {
 }
 
 function alarmSet(type, text, duration) {
-	alarmStatus.status = 1;
-	alarmStatus.type = type;
-	alarmStatus.text = text;
-	alarmStatus.time = dayjs();
-	alarmStatus.duration = duration;
-
-	socket.emit('chamberControl', {
-		type: 'alarm',
-		data: {
-			...alarmStatus,
-		},
-	});
-
-	// Cloud alert
-	cloudReporter.alert({
-		alertType: type,
-		alertMessage: text,
-		severity: 'warning',
-		sensorSnapshot: {
-			pressure: sensorData?.pressure,
-			o2: sensorData?.o2,
-			temperature: sensorData?.temperature,
-			humidity: sensorData?.humidity,
-		},
-	});
+	alarmManager.raise(type, text, { duration });
+	alarmStatus = alarmManager.getStatus();
 }
 
-function alarmClear() {
-	const prevType = alarmStatus.type;
-	const prevText = alarmStatus.text;
-
-	alarmStatus.status = 0;
-	alarmStatus.type = '';
-	alarmStatus.text = '';
-	alarmStatus.time = 0;
-	alarmStatus.duration = 0;
+function alarmClear(type) {
+	if (type) {
+		alarmManager.clear(type);
+	} else {
+		alarmManager.clearAll();
+	}
 	sessionStatus.patientWarning = false;
-
-	// Cloud alert clear
-	cloudReporter.alertClear({
-		alertType: prevType,
-		alertMessage: prevText,
-		severity: 'warning',
-	});
+	alarmStatus = alarmManager.getStatus();
 }
 
 function doorClose() {
@@ -3398,10 +3356,6 @@ function createChart() {
 	const quickProfile = ProfileUtils.createQuickProfile(setProfile);
 	sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
 
-	// Export profile to JSON file
-	const fs = require('fs');
-	const profileData = JSON.stringify(sessionStatus.profile, null, 2);
-	fs.writeFileSync('session_profile.json', profileData);
 
 	//console.log(sessionStatus.profile);
 }

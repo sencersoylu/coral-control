@@ -6,7 +6,7 @@
 const db = require('../src/models');
 const Sequelize = require('sequelize');
 
-async function migrateDatabase() {
+async function migrateDatabase({ closeConnection = true } = {}) {
 	try {
 		console.log('🔄 Veritabanı migration başlatılıyor...');
 		await db.sequelize.authenticate();
@@ -176,7 +176,9 @@ async function migrateDatabase() {
 		console.error('\n❌ Migration hatası:', error);
 		throw error;
 	} finally {
-		await db.sequelize.close();
+		if (closeConnection) {
+			await db.sequelize.close();
+		}
 	}
 }
 
