@@ -854,10 +854,6 @@ async function init() {
 					sessionStatus.toplamSure,
 					sessionStatus.speed
 				);
-
-				socket.emit('chamberControl', {
-					type: 'sessionStarting',
-					data: {},
 				});
 				sessionStartBit(1);
 				sessionStatus.sessionStartTime = dayjs();
