@@ -1363,12 +1363,27 @@ function read() {
 	// Sensor değerlerini al
 
 	if (socket) {
+		const clientSessionStatus = {
+			status: sessionStatus.status,
+			zaman: sessionStatus.zaman,
+			profile: sessionStatus.profile,
+			hedef: sessionStatus.hedef,
+			setDerinlik: sessionStatus.setDerinlik,
+			toplamSure: sessionStatus.toplamSure,
+			doorStatus: sessionStatus.doorStatus,
+			doorSensorStatus: sessionStatus.doorSensorStatus,
+			eop: sessionStatus.eop,
+			chamberStatus: sessionStatus.chamberStatus,
+			chamberStatusText: sessionStatus.chamberStatusText,
+			patientWarningStatus: sessionStatus.patientWarningStatus,
+			speed: sessionStatus.speed,
+		};
 		socket.emit('sensorData', {
 			pressure: sensorData['pressure'],
 			o2: sensorData['o2'],
 			temperature: sensorData['temperature'],
 			humidity: sensorData['humidity'],
-			sessionStatus: sessionStatus,
+			sessionStatus: clientSessionStatus,
 			doorStatus: sessionStatus.doorStatus,
 		});
 	}
@@ -2440,12 +2455,27 @@ function read_demo() {
 	}
 
 	if (socket) {
+		const clientSessionStatus = {
+			status: sessionStatus.status,
+			zaman: sessionStatus.zaman,
+			profile: sessionStatus.profile,
+			hedef: sessionStatus.hedef,
+			setDerinlik: sessionStatus.setDerinlik,
+			toplamSure: sessionStatus.toplamSure,
+			doorStatus: sessionStatus.doorStatus,
+			doorSensorStatus: sessionStatus.doorSensorStatus,
+			eop: sessionStatus.eop,
+			chamberStatus: sessionStatus.chamberStatus,
+			chamberStatusText: sessionStatus.chamberStatusText,
+			patientWarningStatus: sessionStatus.patientWarningStatus,
+			speed: sessionStatus.speed,
+		};
 		socket.emit('sensorData', {
 			pressure: Number(sensorData['pressure'].toFixed(2)) || 0,
 			o2: Number(sensorData['o2'].toFixed(0)) || 0,
 			temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
 			humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
-			sessionStatus: sessionStatus,
+			sessionStatus: clientSessionStatus,
 			doorStatus: sessionStatus.doorStatus,
 		});
 	}
