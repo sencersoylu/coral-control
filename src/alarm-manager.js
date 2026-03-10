@@ -74,6 +74,13 @@ class AlarmManager {
 			this.cooldowns.set(type, Date.now() + cooldownMs);
 		}
 
+		if (this.socket) {
+			this.socket.emit('chamberControl', {
+				type: 'alarmClear',
+				data: { clearedType: type },
+			});
+		}
+
 		if (this.cloudReporter) {
 			this.cloudReporter.alertClear({
 				alertType: alarm.type,
