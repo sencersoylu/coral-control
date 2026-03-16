@@ -854,7 +854,6 @@ async function init() {
 					sessionStatus.toplamSure,
 					sessionStatus.speed
 				);
-				});
 				sessionStartBit(1);
 				sessionStatus.sessionStartTime = dayjs();
 
@@ -1179,6 +1178,23 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 			}
 		});
 
+		socket.on('patientEmergency', function (data) {
+			console.log(`[PATIENT EMERGENCY] Cabin: ${data.cabinId}, Patient: ${data.patientName}, Time: ${new Date(data.timestamp).toISOString()}`);
+			alarmSet('patientEmergency', `Patient Emergency - ${data.cabinId} (${data.patientName})`, 0);
+			socket.emit('patientEmergency', {
+				cabinId: data.cabinId || 'unknown',
+				patientName: data.patientName || 'unknown',
+				timestamp: data.timestamp || Date.now(),
+			});
+		});
+
+		socket.on('patientHeartbeat', function (data) {
+			if (data && data.cabinId) {
+				// Optionally track last heartbeat time per cabin
+				// console.log(`[HEARTBEAT] ${data.cabinId}`);
+			}
+		});
+
 		socket.on('sessionStart', function (data) {
 			console.log('sessionStart', data);
 			const dt = JSON.parse(data);
@@ -1381,6 +1397,16 @@ function read() {
 			humidity: sensorData['humidity'],
 			sessionStatus: clientSessionStatus,
 			doorStatus: sessionStatus.doorStatus,
+		});
+		socket.emit('patientData', {
+			p: sensorData['pressure'] || 0,
+			t: sensorData['temperature'] || 0,
+			o2: sensorData['o2'] || 0,
+			rh: sensorData['humidity'] || 0,
+			elapsed: sessionStatus.zaman || 0,
+			total: sessionStatus.toplamSure || 0,
+			profile: sessionStatus.profile || [],
+			status: sessionStatus.status || 0,
 		});
 	}
 
@@ -2473,6 +2499,16 @@ function read_demo() {
 			humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
 			sessionStatus: clientSessionStatus,
 			doorStatus: sessionStatus.doorStatus,
+		});
+		socket.emit('patientData', {
+			p: Number(sensorData['pressure'].toFixed(2)) || 0,
+			t: Number(sensorData['temperature'].toFixed(1)) || 0,
+			o2: Number(sensorData['o2'].toFixed(0)) || 0,
+			rh: Number(sensorData['humidity'].toFixed(0)) || 0,
+			elapsed: sessionStatus.zaman || 0,
+			total: sessionStatus.toplamSure || 0,
+			profile: sessionStatus.profile || [],
+			status: sessionStatus.status || 0,
 		});
 	}
 

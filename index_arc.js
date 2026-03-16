@@ -1447,6 +1447,7 @@ function read_demo() {
 		sessionStatus.pressure = sessionStatus.hedef / 33.4;
 		sessionStatus.main_fsw = sessionStatus.hedef / 33.4;
 		sensorData['pressure'] = sessionStatus.hedef / 33.4;
+		console.log(sensorData['pressure']);
 
 		sessionStatus.o2 = sensorData['o2'];
 
