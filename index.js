@@ -2830,7 +2830,7 @@ function decompValve02(angle) {
 
 	socket.emit(
 		'writeRegister',
-		JSON.stringify({ register: 'R01001', value: send })
+		JSON.stringify({ register: 'R01003', value: send })
 	);
 }
 function sessionResume(
