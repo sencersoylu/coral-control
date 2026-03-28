@@ -26,16 +26,62 @@ const AlarmManager = require('./src/alarm-manager');
 
 const connections = []; // view soket bağlantılarının tutulduğu array
 let isWorking = 0;
-let isConnectedPLC = 0;
+let isConnectedPLC = 1;
 let sensorCalibrationData = {}; // Object to store all sensor calibration data
 let demoMode = 0;
 let currentSessionRecordId = null; // Aktif seans kaydı ID'si
 let currentLoggedInUserId = null; // Giriş yapmış kullanıcı ID'si
 let lastSensorUpdateTime = 0; // Son sensör güncelleme zamanı (timestamp)
 let SENSOR_UPDATE_INTERVAL = 10000; // Overridden by appConfig.sensorUpdateInterval
+let lastEmittedSessionProfile = null;
 
 // Cloud Reporter — initialized after config is loaded from DB
 let cloudReporter = null;
+
+function buildClientSessionStatus() {
+	return {
+		status: sessionStatus.status,
+		zaman: sessionStatus.zaman,
+		hedef: sessionStatus.hedef,
+		setDerinlik: sessionStatus.setDerinlik,
+		toplamSure: sessionStatus.toplamSure,
+		doorStatus: sessionStatus.doorStatus,
+		doorSensorStatus: sessionStatus.doorSensorStatus,
+		eop: sessionStatus.eop,
+		chamberStatus: sessionStatus.chamberStatus,
+		chamberStatusText: sessionStatus.chamberStatusText,
+		patientWarningStatus: sessionStatus.patientWarningStatus,
+		speed: sessionStatus.speed,
+	};
+}
+
+function emitSessionProfile(force = false) {
+	if (!socket || !socket.connected) return;
+
+	const profile = Array.isArray(sessionStatus.profile) ? sessionStatus.profile : [];
+	const serializedProfile = JSON.stringify(profile);
+
+	if (!force && serializedProfile === lastEmittedSessionProfile) {
+		return;
+	}
+
+	lastEmittedSessionProfile = serializedProfile;
+	socket.emit('sessionProfile', {
+		profile,
+		zaman: sessionStatus.zaman || 0,
+		total: sessionStatus.toplamSure || 0,
+		status: sessionStatus.status || 0,
+	});
+}
+
+function setSessionProfile(nextProfile) {
+	sessionStatus.profile = Array.isArray(nextProfile) ? nextProfile : [];
+	emitSessionProfile();
+}
+
+function notifySessionProfileUpdated() {
+	emitSessionProfile();
+}
 
 // Insert default sensor data after sync
 async function insertDefaultSensorData() {
@@ -572,6 +618,7 @@ async function init() {
 		alarmManager.setSocket(socket);
 		socket.on('connect', function () {
 			console.log('Connected to server');
+			emitSessionProfile(true);
 			if (demoMode == 0) {
 				//doorOpen();
 				compValve(0);
@@ -588,6 +635,9 @@ async function init() {
 		});
 		socket.on('disconnect', function () {
 			console.log('Disconnected from server');
+		});
+		socket.on('requestSessionProfile', function () {
+			emitSessionProfile(true);
 		});
 		socket.on('data', async function (data) {
 			if (demoMode == 1) {
@@ -619,6 +669,16 @@ async function init() {
 				);
 				sessionStatus.pressure = sensorData['pressure'];
 				sessionStatus.main_fsw = sensorData['pressure'] * 33.4;
+
+				sensorData['anteChamberPressure'] = linearConversion(
+					sensorCalibrationData['pressure'].sensorLowerLimit,
+					sensorCalibrationData['pressure'].sensorUpperLimit,
+					sensorCalibrationData['pressure'].sensorAnalogLower,
+					sensorCalibrationData['pressure'].sensorAnalogUpper,
+					dataObject.data[3],
+					sensorCalibrationData['pressure'].sensorDecimal
+				);
+
 				//console.log('pressure',sessionStatus.pressure, dataObject.data[1]);
 				//console.log(sensorData);
 
@@ -841,7 +901,7 @@ async function init() {
 				];
 
 				const quickProfile = ProfileUtils.createQuickProfile(setProfile);
-				sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
+				setSessionProfile(quickProfile.toTimeBasedArrayBySeconds());
 
 	
 				console.log(sessionStatus.profile);
@@ -931,7 +991,13 @@ async function init() {
 			} else if (dt.type == 'decompValve') {
 				console.log('deCompValve : ', dt.data.vana);
 				decompValve(dt.data.vana);
-			} else if (dt.type == 'drainOn') {
+			} else if (dt.type == 'compValve02') {
+				console.log('CompValve_Enter : ', dt.data.vana);
+				compValve02(dt.data.vana);
+			} else if (dt.type == 'decompValve02') {
+				console.log('deCompValve_Enter : ', dt.data.vana);
+				decompValve(dt.data.vana);
+			}else if (dt.type == 'drainOn') {
 				console.log('drainOn');
 				drainOn();
 			} else if (dt.type == 'drainOff') {
@@ -1238,7 +1304,7 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 			);
 			const quickProfile = ProfileUtils.createQuickProfile(setProfile);
 			console.log(quickProfile);
-			sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
+			setSessionProfile(quickProfile.toTimeBasedArrayBySeconds());
 
 			console.log(sessionStatus.profile);
 		});
@@ -1375,38 +1441,14 @@ function read() {
 	// Sensor değerlerini al
 
 	if (socket) {
-		const clientSessionStatus = {
-			status: sessionStatus.status,
-			zaman: sessionStatus.zaman,
-			profile: sessionStatus.profile,
-			hedef: sessionStatus.hedef,
-			setDerinlik: sessionStatus.setDerinlik,
-			toplamSure: sessionStatus.toplamSure,
-			doorStatus: sessionStatus.doorStatus,
-			doorSensorStatus: sessionStatus.doorSensorStatus,
-			eop: sessionStatus.eop,
-			chamberStatus: sessionStatus.chamberStatus,
-			chamberStatusText: sessionStatus.chamberStatusText,
-			patientWarningStatus: sessionStatus.patientWarningStatus,
-			speed: sessionStatus.speed,
-		};
 		socket.emit('sensorData', {
 			pressure: sensorData['pressure'],
+			anteChamberPressure: sensorData['anteChamberPressure'],
 			o2: sensorData['o2'],
 			temperature: sensorData['temperature'],
 			humidity: sensorData['humidity'],
-			sessionStatus: clientSessionStatus,
+			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
-		});
-		socket.emit('patientData', {
-			p: sensorData['pressure'] || 0,
-			t: sensorData['temperature'] || 0,
-			o2: sensorData['o2'] || 0,
-			rh: sensorData['humidity'] || 0,
-			elapsed: sessionStatus.zaman || 0,
-			total: sessionStatus.toplamSure || 0,
-			profile: sessionStatus.profile || [],
-			status: sessionStatus.status || 0,
 		});
 	}
 
@@ -1432,7 +1474,7 @@ function read() {
 
 	// Ensure profile is always an array before any indexed access
 	if (!Array.isArray(sessionStatus.profile)) {
-		sessionStatus.profile = [];
+		setSessionProfile([]);
 	}
 
 	if (sessionStatus.status > 0) sessionStatus.zaman++;
@@ -1876,6 +1918,33 @@ function read() {
 			sessionStatus.pressure < 0.01
 		) {
 			sessionStatus.eop = 1;
+
+			// Son ayarları kaydet, 30 sn sonra grafiği tekrar çizmek için
+			const lastSpeed = sessionStatus.speed;
+			const lastDerinlik = sessionStatus.setDerinlik;
+			const lastToplamSure = sessionStatus.toplamSure;
+			const lastDalisSuresi = sessionStatus.dalisSuresi;
+			const lastCikisSuresi = sessionStatus.cikisSuresi;
+
+			setTimeout(() => {
+				// Yeni seans başladıysa eski değerleri yazma
+				if (sessionStatus.status !== 0) {
+					console.log('Chart redraw skipped — new session already started');
+					return;
+				}
+				sessionStatus.speed = lastSpeed;
+				sessionStatus.setDerinlik = lastDerinlik;
+				sessionStatus.toplamSure = lastToplamSure;
+				sessionStatus.dalisSuresi = lastDalisSuresi;
+				sessionStatus.cikisSuresi = lastCikisSuresi;
+				createChart();
+				console.log('Chart redrawn 30s after session end with last settings:', {
+					speed: lastSpeed,
+					derinlik: lastDerinlik,
+					toplamSure: lastToplamSure,
+				});
+			}, 30000);
+
 			alarmSet('endOfSession', 'Session Finished.', 0);
 			sendCommand({
 				url: 'ws://192.168.77.100:8080/ws',
@@ -2477,38 +2546,14 @@ function read_demo() {
 	}
 
 	if (socket) {
-		const clientSessionStatus = {
-			status: sessionStatus.status,
-			zaman: sessionStatus.zaman,
-			profile: sessionStatus.profile,
-			hedef: sessionStatus.hedef,
-			setDerinlik: sessionStatus.setDerinlik,
-			toplamSure: sessionStatus.toplamSure,
-			doorStatus: sessionStatus.doorStatus,
-			doorSensorStatus: sessionStatus.doorSensorStatus,
-			eop: sessionStatus.eop,
-			chamberStatus: sessionStatus.chamberStatus,
-			chamberStatusText: sessionStatus.chamberStatusText,
-			patientWarningStatus: sessionStatus.patientWarningStatus,
-			speed: sessionStatus.speed,
-		};
 		socket.emit('sensorData', {
 			pressure: Number(sensorData['pressure'].toFixed(2)) || 0,
+			anteChamberPressure: Number((sensorData['anteChamberPressure'] || 0).toFixed(2)) || 0,
 			o2: Number(sensorData['o2'].toFixed(0)) || 0,
 			temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
 			humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
-			sessionStatus: clientSessionStatus,
+			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
-		});
-		socket.emit('patientData', {
-			p: Number(sensorData['pressure'].toFixed(2)) || 0,
-			t: Number(sensorData['temperature'].toFixed(1)) || 0,
-			o2: Number(sensorData['o2'].toFixed(0)) || 0,
-			rh: Number(sensorData['humidity'].toFixed(0)) || 0,
-			elapsed: sessionStatus.zaman || 0,
-			total: sessionStatus.toplamSure || 0,
-			profile: sessionStatus.profile || [],
-			status: sessionStatus.status || 0,
 		});
 	}
 
@@ -2710,6 +2755,29 @@ function compValve(angle) {
 	);
 }
 
+function compValve02(angle) {
+	if (angle > 90) angle = 90;
+	if (angle < 0) angle = 0;
+	angle = Math.round(angle);
+	currentCompValveAngle = angle;
+	console.log('compValve', angle);
+
+	// var send = angle * 364.08; //(32767/90derece)
+	// send = send.toFixed(0);
+	// Plc.writeUint({
+	// 	addr: '%QB34',
+	// 	strlen: 2,
+	// 	val: send,
+	// });
+
+	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
+
+	socket.emit(
+		'writeRegister',
+		JSON.stringify({ register: 'R01002', value: send })
+	);
+}
+
 function drainOn() {
 	socket.emit('writeBit', { register: 'M0120', value: 1 });
 }
@@ -2742,6 +2810,29 @@ function decompValve(angle) {
 	);
 }
 
+function decompValve02(angle) {
+	angle = Math.round(angle);
+
+	if (angle > 90) angle = 90;
+	if (angle < 0) angle = 0;
+	currentDecompValveAngle = angle;
+	console.log('decompvalve ', angle);
+
+	// var send = angle * 364.08; //(32767/90derece)
+	// send = send.toFixed(0);
+	// Plc.writeUint({
+	// 	addr: '%QB38',
+	// 	strlen: 2,
+	// 	val: send,
+	// });
+
+	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
+
+	socket.emit(
+		'writeRegister',
+		JSON.stringify({ register: 'R01001', value: send })
+	);
+}
 function sessionResume(
 	pauseStartTime,
 	pauseEndTime,
@@ -2888,7 +2979,7 @@ function sessionFinishToZero(startTimeOverride, currentPressureOverride) {
 		? sessionStatus.profile[startTime][1]
 		: 0;
 
-	if (!Array.isArray(sessionStatus.profile)) sessionStatus.profile = [];
+	if (!Array.isArray(sessionStatus.profile)) setSessionProfile([]);
 	// originalLength removed; we will truncate instead of filling with zeros
 
 	// Determine step index to keep series consistent
@@ -3074,6 +3165,7 @@ function updateTreatmentDepth(newDepth) {
 		return false;
 	}
 	// Gerekirse güncellenmiş profili frontend'e bildir
+	notifySessionProfileUpdated();
 
 	console.log(`Tedavi derinliği ${newDepth} bar olarak güncellendi.`);
 	return true;
@@ -3152,10 +3244,16 @@ function updateTotalSessionDuration(newTotalDuration) {
 			const step = sessionStatus.profile[i];
 			if (step && step[3] === 3) newProfile.push([...step]);
 		}
-		sessionStatus.profile = newProfile;
+		setSessionProfile(newProfile);
 	} else {
 		console.log('Profil formatı tanınamadı.');
 		return false;
+	}
+	if (
+		Array.isArray(sessionStatus.profile[0]) &&
+		sessionStatus.profile[0].length === 3
+	) {
+		notifySessionProfileUpdated();
 	}
 	console.log(
 		`Toplam süre ${newTotalDuration} dakika olarak güncellendi. Tedavi süresi: ${newTreatmentDuration} dakika.`
@@ -3241,7 +3339,7 @@ function updateDiveAndExitDurations(newDiveDuration, newExitDuration) {
 				newProfile.push([newProfile.length + 1, cikisStep[1], cikisStep[2], 3]);
 			}
 		}
-		sessionStatus.profile = newProfile;
+		setSessionProfile(newProfile);
 	} else {
 		console.log('Profil formatı tanınamadı.');
 		return false;
@@ -3249,6 +3347,12 @@ function updateDiveAndExitDurations(newDiveDuration, newExitDuration) {
 	// State güncelle
 	sessionStatus.dalisSuresi = newDiveDuration;
 	sessionStatus.cikisSuresi = newExitDuration;
+	if (
+		Array.isArray(sessionStatus.profile[0]) &&
+		sessionStatus.profile[0].length === 3
+	) {
+		notifySessionProfileUpdated();
+	}
 	console.log(
 		`Dalış süresi ${newDiveDuration} dakika, çıkış süresi ${newExitDuration} dakika olarak güncellendi. Tedavi süresi: ${newTreatmentDuration} dakika.`
 	);
@@ -3272,7 +3376,7 @@ const quickProfile = ProfileUtils.createQuickProfile([
 	],
 	[sessionStatus.cikisSuresi, 0, 'air'],
 ]);
-sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
+setSessionProfile(quickProfile.toTimeBasedArrayBySeconds());
 
 // ============================================================================
 // O2 KALİBRASYON FONKSİYONLARI
@@ -3416,7 +3520,7 @@ function createChart() {
 	);
 
 	const quickProfile = ProfileUtils.createQuickProfile(setProfile);
-	sessionStatus.profile = quickProfile.toTimeBasedArrayBySeconds();
+	setSessionProfile(quickProfile.toTimeBasedArrayBySeconds());
 
 
 	//console.log(sessionStatus.profile);
