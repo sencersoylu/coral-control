@@ -996,7 +996,7 @@ async function init() {
 				compValve02(dt.data.vana);
 			} else if (dt.type == 'decompValve02') {
 				console.log('deCompValve_Enter : ', dt.data.vana);
-				decompValve(dt.data.vana);
+				decompValve02(dt.data.vana);
 			}else if (dt.type == 'drainOn') {
 				console.log('drainOn');
 				drainOn();
