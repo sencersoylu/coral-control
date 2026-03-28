@@ -1450,6 +1450,16 @@ function read() {
 			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
 		});
+		socket.emit('patientData', {
+			p: sensorData['pressure'] || 0,
+			t: sensorData['temperature'] || 0,
+			o2: sensorData['o2'] || 0,
+			rh: sensorData['humidity'] || 0,
+			elapsed: sessionStatus.zaman || 0,
+			total: sessionStatus.toplamSure || 0,
+			profile: sessionStatus.profile || [],
+			status: sessionStatus.status || 0,
+		});
 	}
 
 	console.log(
@@ -2554,6 +2564,16 @@ function read_demo() {
 			humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
 			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
+		});
+		socket.emit('patientData', {
+			p: Number(sensorData['pressure'].toFixed(2)) || 0,
+			t: Number(sensorData['temperature'].toFixed(1)) || 0,
+			o2: Number(sensorData['o2'].toFixed(0)) || 0,
+			rh: Number(sensorData['humidity'].toFixed(0)) || 0,
+			elapsed: sessionStatus.zaman || 0,
+			total: sessionStatus.toplamSure || 0,
+			profile: sessionStatus.profile || [],
+			status: sessionStatus.status || 0,
 		});
 	}
 
