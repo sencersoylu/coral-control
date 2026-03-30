@@ -490,13 +490,13 @@ async function loadConfigFromDB() {
 		// DalisSuresi ve CikisSuresi hesapla (speed değerine göre)
 		let dalisSuresi = 0;
 		let cikisSuresi = 0;
-		if (sessionStatus.speed == 1) {
+		if (sessionStatus.speed == 3) {
 			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
 			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 		} else if (sessionStatus.speed == 2) {
 			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-		} else if (sessionStatus.speed == 3) {
+		} else if (sessionStatus.speed == 1) {
 			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
 			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 		}
@@ -1037,13 +1037,13 @@ async function init() {
 				let dalisSuresi = 0;
 				let cikisSuresi = 0;
 
-				if (sessionStatus.speed == 1) {
+				if (sessionStatus.speed == 3) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 				} else if (sessionStatus.speed == 2) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (sessionStatus.speed == 3) {
+				} else if (sessionStatus.speed == 1) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 				}
@@ -1087,13 +1087,13 @@ async function init() {
 				let dalisSuresi = 0;
 				let cikisSuresi = 0;
 
-				if (sessionStatus.speed == 1) {
+				if (sessionStatus.speed == 3) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 				} else if (sessionStatus.speed == 2) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (sessionStatus.speed == 3) {
+				} else if (sessionStatus.speed == 1) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 				}
@@ -1136,13 +1136,13 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 				let dalisSuresi = 0;
 				let cikisSuresi = 0;
 
-				if (dt.data.speed == 1) {
+				if (dt.data.speed == 3) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 				} else if (dt.data.speed == 2) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (dt.data.speed == 3) {
+				} else if (dt.data.speed == 1) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 				}
@@ -1269,13 +1269,13 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 			const dt = JSON.parse(data);
 			let dalisSuresi = 0;
 			let cikisSuresi = 0;
-			if (dt.dalisSuresi == 1) {
+			if (dt.dalisSuresi == 3) {
 				dalisSuresi = Math.round(dt.setDerinlik / 0.66666666);
 				cikisSuresi = Math.round(dt.setDerinlik / 1);
 			} else if (dt.dalisSuresi == 2) {
 				dalisSuresi = Math.round(dt.setDerinlik / 0.5);
 				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
-			} else if (dt.dalisSuresi == 3) {
+			} else if (dt.dalisSuresi == 1) {
 				dalisSuresi = Math.round(dt.setDerinlik / 0.4);
 				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
 			}
