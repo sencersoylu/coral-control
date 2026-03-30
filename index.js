@@ -491,14 +491,14 @@ async function loadConfigFromDB() {
 		let dalisSuresi = 0;
 		let cikisSuresi = 0;
 		if (sessionStatus.speed == 1) {
+			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
+			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+		} else if (sessionStatus.speed == 2) {
 			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-		} else if (sessionStatus.speed == 2) {
-			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 		} else if (sessionStatus.speed == 3) {
-			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
-			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
+			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 		}
 		sessionStatus.dalisSuresi = dalisSuresi;
 		sessionStatus.cikisSuresi = cikisSuresi;
@@ -830,14 +830,14 @@ async function init() {
 				let cikisSuresi = 0;
 
 				if (dt.data.dalisSuresi == 1) {
+					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.66666666);
+					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 1);
+				} else if (dt.data.dalisSuresi == 2) {
 					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.5);
 					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.5);
-				} else if (dt.data.dalisSuresi == 2) {
-					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 1);
 				} else if (dt.data.dalisSuresi == 3) {
-					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 2);
-					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 2);
+					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.4);
+					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.5);
 				}
 
 				oxygenOpen();
@@ -1038,14 +1038,14 @@ async function init() {
 				let cikisSuresi = 0;
 
 				if (sessionStatus.speed == 1) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+				} else if (sessionStatus.speed == 2) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (sessionStatus.speed == 2) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 				} else if (sessionStatus.speed == 3) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 				}
 
 				sessionStatus.dalisSuresi = dalisSuresi;
@@ -1088,14 +1088,14 @@ async function init() {
 				let cikisSuresi = 0;
 
 				if (sessionStatus.speed == 1) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+				} else if (sessionStatus.speed == 2) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (sessionStatus.speed == 2) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 				} else if (sessionStatus.speed == 3) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 				}
 
 				sessionStatus.dalisSuresi = dalisSuresi;
@@ -1137,14 +1137,14 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 				let cikisSuresi = 0;
 
 				if (dt.data.speed == 1) {
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
+				} else if (dt.data.speed == 2) {
 					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (dt.data.speed == 2) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
 				} else if (dt.data.speed == 3) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 2);
+					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.4);
+					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
 				}
 
 				sessionStatus.dalisSuresi = dalisSuresi;
@@ -1270,14 +1270,14 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 			let dalisSuresi = 0;
 			let cikisSuresi = 0;
 			if (dt.dalisSuresi == 1) {
+				dalisSuresi = Math.round(dt.setDerinlik / 0.66666666);
+				cikisSuresi = Math.round(dt.setDerinlik / 1);
+			} else if (dt.dalisSuresi == 2) {
 				dalisSuresi = Math.round(dt.setDerinlik / 0.5);
 				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
-			} else if (dt.dalisSuresi == 2) {
-				dalisSuresi = Math.round(dt.setDerinlik / 1);
-				cikisSuresi = Math.round(dt.setDerinlik / 1);
 			} else if (dt.dalisSuresi == 3) {
-				dalisSuresi = Math.round(dt.setDerinlik / 2);
-				cikisSuresi = Math.round(dt.setDerinlik / 2);
+				dalisSuresi = Math.round(dt.setDerinlik / 0.4);
+				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
 			}
 
 			sessionStatus.speed = dt.dalisSuresi;
