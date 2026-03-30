@@ -839,6 +839,8 @@ async function init() {
 					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 2);
 					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 2);
 				}
+
+				oxygenOpen();
 				sessionStatus.dalisSuresi = dalisSuresi;
 				sessionStatus.cikisSuresi = cikisSuresi;
 				sessionStatus.toplamSure = dt.data.toplamSure;
@@ -972,6 +974,7 @@ async function init() {
 				});
 			} else if (dt.type == 'sessionStop') {
 				sessionStop();
+				oxygenClose();
 				socket.emit('chamberControl', {
 					type: 'sessionStopped',
 					data: {
@@ -2461,7 +2464,7 @@ function read_demo() {
 				alarmSet('endOfSession', 'Session Finished.', 0);
 				sessionStartBit(0);
 				//doorOpen();
-
+				oxygenClose();
 				// Cloud session end
 				if (sessionStatus.cloudSessionId) {
 					const elapsed = sessionStatus.sessionStartTime
