@@ -2299,32 +2299,35 @@ function read_demo() {
 	if (sessionStatus.status > 0 && sessionStatus.zaman > 5) {
 
 		// Simulate pressure based on profile — linear ramp toward target
-		let targetPressure = 0;
+		// Profile values are in bar, internal calc in FSW, display in bar
+		let targetBar = 0;
 		if (
 			sessionStatus.profile.length > sessionStatus.zaman &&
 			sessionStatus.profile[sessionStatus.zaman]
 		) {
-			targetPressure = sessionStatus.profile[sessionStatus.zaman][1];
+			targetBar = sessionStatus.profile[sessionStatus.zaman][1];
 		} else if (
 			sessionStatus.profile.length > 0 &&
 			sessionStatus.profile[sessionStatus.profile.length - 1]
 		) {
-			targetPressure = sessionStatus.profile[sessionStatus.profile.length - 1][1];
+			targetBar = sessionStatus.profile[sessionStatus.profile.length - 1][1];
 		}
 
-		sessionStatus.hedef = targetPressure * 33.4;
+		const targetFsw = targetBar * 33.4;
+		sessionStatus.hedef = targetFsw;
 
-		// Linear ramp: move main_fsw toward target at max 0.5 FSW/sec
+		// Linear ramp in FSW: move main_fsw toward target at max 0.5 FSW/sec
 		const maxRatePerSec = 0.5;
-		const diff = targetPressure - sessionStatus.main_fsw;
+		const diff = targetFsw - sessionStatus.main_fsw;
 		if (Math.abs(diff) <= maxRatePerSec) {
-			sessionStatus.main_fsw = targetPressure;
+			sessionStatus.main_fsw = targetFsw;
 		} else {
 			sessionStatus.main_fsw += Math.sign(diff) * maxRatePerSec;
 		}
 
-		sensorData['pressure'] = filters.pressure.update(sessionStatus.main_fsw);
-		sessionStatus.pressure = sessionStatus.main_fsw;
+		// Convert back to bar for sensorData (matches read() behavior)
+		sessionStatus.pressure = sessionStatus.main_fsw / 33.4;
+		sensorData['pressure'] = filters.pressure.update(sessionStatus.pressure);
 		sessionStatus.fsw = sessionStatus.main_fsw;
 
 		sessionStatus.o2 = sensorData['o2'];
