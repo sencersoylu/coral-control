@@ -184,10 +184,19 @@ async function insertDefaultSensorData() {
 const migrateDatabase = require('./scripts/migrate-db');
 
 (async () => {
-	const dbExists = fs.existsSync('./coral.sqlite');
+	// Check if tables exist (PRAGMA returns empty for missing tables)
+	let tablesExist = false;
+	try {
+		const [results] = await db.sequelize.query(
+			"SELECT name FROM sqlite_master WHERE type='table' AND name='sensors'"
+		);
+		tablesExist = results.length > 0;
+	} catch (e) {
+		tablesExist = false;
+	}
 
-	if (!dbExists) {
-		console.log('Database not found, creating tables...');
+	if (!tablesExist) {
+		console.log('Database tables not found, creating...');
 		await db.sequelize.sync({ force: true });
 		console.log('Database tables created.');
 	} else {
