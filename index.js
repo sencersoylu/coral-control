@@ -64,8 +64,6 @@ function buildClientSessionStatus() {
 }
 
 function emitSessionProfile(force = false) {
-	if (!socket || !socket.connected) return;
-
 	const profile = Array.isArray(sessionStatus.profile) ? sessionStatus.profile : [];
 	const serializedProfile = JSON.stringify(profile);
 
@@ -74,12 +72,22 @@ function emitSessionProfile(force = false) {
 	}
 
 	lastEmittedSessionProfile = serializedProfile;
-	socket.emit('sessionProfile', {
+
+	const payload = {
 		profile,
 		zaman: sessionStatus.zaman || 0,
 		total: sessionStatus.toplamSure || 0,
 		status: sessionStatus.status || 0,
-	});
+	};
+
+	// Send to PLC/signaling server
+	if (socket && socket.connected) {
+		socket.emit('sessionProfile', payload);
+	}
+	// Send to dashboard/mobile clients on ioServer
+	if (global.ioServer) {
+		global.ioServer.emit('sessionProfile', payload);
+	}
 }
 
 function setSessionProfile(nextProfile) {
@@ -633,6 +641,24 @@ async function init() {
 		});
 		dashSocket.emit('sessionStatus', sessionStatus);
 		dashSocket.emit('alarmStatus', alarmManager.getStatus());
+		// Send current profile on connect
+		const profile = Array.isArray(sessionStatus.profile) ? sessionStatus.profile : [];
+		dashSocket.emit('sessionProfile', {
+			profile,
+			zaman: sessionStatus.zaman || 0,
+			total: sessionStatus.toplamSure || 0,
+			status: sessionStatus.status || 0,
+		});
+
+		dashSocket.on('requestSessionProfile', () => {
+			const p = Array.isArray(sessionStatus.profile) ? sessionStatus.profile : [];
+			dashSocket.emit('sessionProfile', {
+				profile: p,
+				zaman: sessionStatus.zaman || 0,
+				total: sessionStatus.toplamSure || 0,
+				status: sessionStatus.status || 0,
+			});
+		});
 
 		dashSocket.on('demoControl', (data) => {
 			if (demoMode == 0) {
