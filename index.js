@@ -182,6 +182,7 @@ async function insertDefaultSensorData() {
 
 // Initialize database and start application
 const migrateDatabase = require('./scripts/migrate-db');
+const seedDatabase = require('./scripts/seed-db');
 
 (async () => {
 	// Check if tables exist (PRAGMA returns empty for missing tables)
@@ -205,11 +206,8 @@ const migrateDatabase = require('./scripts/migrate-db');
 		console.log('Database migrations completed.');
 	}
 
-	// Insert default sensors if table is empty (new DB or failed first run)
-	const sensorCount = await db.sensors.count();
-	if (sensorCount === 0) {
-		await insertDefaultSensorData();
-	}
+	// Seed default data (sensors, users, config) if tables are empty
+	await seedDatabase();
 	init();
 })();
 const allRoutes = require('./src/routes');
