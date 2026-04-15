@@ -196,7 +196,9 @@ const migrateDatabase = require('./scripts/migrate-db');
 		console.log('Database migrations completed.');
 	}
 
-	//await insertDefaultSensorData();
+	if (!dbExists) {
+		await insertDefaultSensorData();
+	}
 	init();
 })();
 const allRoutes = require('./src/routes');
