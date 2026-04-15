@@ -1,3 +1,8 @@
 node_modules
 .env
 session_profile.json
+
+# SQLite runtime data
+coral.sqlite
+coral.sqlite-shm
+coral.sqlite-wal
