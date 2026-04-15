@@ -86,7 +86,8 @@ async function seedDatabase() {
 			},
 		];
 		for (const u of users) {
-			await db.users.create(u);
+			// Use hooks: false to skip beforeCreate password re-hashing
+			await db.users.create(u, { hooks: false });
 		}
 		console.log('  Users: 2 records inserted (admin + operator)');
 	} else {
