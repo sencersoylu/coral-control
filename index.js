@@ -7,6 +7,7 @@ const express = require('express');
 const app = express();
 const http = require('http');
 const { io } = require('socket.io-client');
+const { Server: SocketIOServer } = require('socket.io');
 const cors = require('cors');
 const {
 	linearConversion,
@@ -230,6 +231,7 @@ app.use(
 	})
 );
 app.use(allRoutes);
+app.use(express.static('public'));
 
 let sessionStatus = {
 	status: 0, // 0: session durumu yok, 1: session başlatıldı, 2: session duraklatıldı, 3: session durduruldu
@@ -593,6 +595,63 @@ async function init() {
 	// Server port from config
 	const port = (global.appConfig && global.appConfig.serverPort) || 4001;
 	server.listen(port, () => console.log(`Listening on port ${port}`));
+
+	// Socket.IO server for dashboard clients
+	const ioServer = new SocketIOServer(server, {
+		cors: { origin: '*' },
+	});
+	global.ioServer = ioServer;
+
+	ioServer.on('connection', (dashSocket) => {
+		console.log('Dashboard client connected:', dashSocket.id);
+
+		// Send initial state immediately
+		dashSocket.emit('sensorData', {
+			pressure: Number(sensorData['pressure']?.toFixed?.(2)) || 0,
+			anteChamberPressure: Number((sensorData['anteChamberPressure'] || 0).toFixed?.(2)) || 0,
+			o2: Number(sensorData['o2']?.toFixed?.(0)) || 0,
+			temperature: Number(sensorData['temperature']?.toFixed?.(1)) || 0,
+			humidity: Number(sensorData['humidity']?.toFixed?.(0)) || 0,
+		});
+		dashSocket.emit('sessionStatus', sessionStatus);
+		dashSocket.emit('alarmStatus', alarmManager.getStatus());
+
+		dashSocket.on('demoControl', (data) => {
+			if (demoMode == 0) {
+				console.log('demoControl ignored — not in demo mode');
+				return;
+			}
+			handleDemoControl(data);
+		});
+
+		dashSocket.on('sessionStart', (data) => {
+			if (socket && socket.connected) {
+				socket.emit('sessionStart', JSON.stringify(data));
+			}
+		});
+
+		dashSocket.on('sessionPause', () => {
+			if (socket && socket.connected) {
+				socket.emit('sessionPause', '{}');
+			}
+		});
+
+		dashSocket.on('sessionResume', () => {
+			if (socket && socket.connected) {
+				socket.emit('sessionResume', '{}');
+			}
+		});
+
+		dashSocket.on('sessionStop', () => {
+			if (socket && socket.connected) {
+				socket.emit('sessionStop', '{}');
+			}
+		});
+
+		dashSocket.on('disconnect', () => {
+			console.log('Dashboard client disconnected:', dashSocket.id);
+		});
+	});
 
 	// Initialize CloudReporter from DB config (env vars as fallback)
 	const cloudApiUrl = (global.appConfig && global.appConfig.cloudApiUrl) || process.env.CLOUD_API_URL || '';
@@ -1436,6 +1495,53 @@ setInterval(() => {
 		sensorData['pressure'] = filters.pressure.update(0);
 		read_demo();
 	}
+
+	// Broadcast to dashboard clients
+	if (global.ioServer) {
+		const dashData = {
+			pressure: Number(sensorData['pressure']?.toFixed?.(2)) || 0,
+			anteChamberPressure: Number((sensorData['anteChamberPressure'] || 0).toFixed?.(2)) || 0,
+			o2: Number(sensorData['o2']?.toFixed?.(0)) || 0,
+			temperature: Number(sensorData['temperature']?.toFixed?.(1)) || 0,
+			humidity: Number(sensorData['humidity']?.toFixed?.(0)) || 0,
+		};
+		global.ioServer.emit('sensorData', dashData);
+		global.ioServer.emit('sessionStatus', {
+			status: sessionStatus.status,
+			zaman: sessionStatus.zaman,
+			hedef: sessionStatus.hedef,
+			main_fsw: sessionStatus.main_fsw,
+			pressure: sessionStatus.pressure,
+			fsw: sessionStatus.fsw,
+			grafikdurum: sessionStatus.grafikdurum,
+			adim: sessionStatus.adim,
+			oksijen: sessionStatus.oksijen,
+			otomanuel: sessionStatus.otomanuel,
+			ventil: sessionStatus.ventil,
+			vanacikis: sessionStatus.vanacikis,
+			cikis: sessionStatus.cikis,
+			eop: sessionStatus.eop,
+			toplamSure: sessionStatus.toplamSure,
+			setDerinlik: sessionStatus.setDerinlik,
+			speed: sessionStatus.speed,
+			doorStatus: sessionStatus.doorStatus,
+			doorSensorStatus: sessionStatus.doorSensorStatus,
+			pcontrol: sessionStatus.pcontrol,
+			comp_offset: sessionStatus.comp_offset,
+			comp_gain: sessionStatus.comp_gain,
+			comp_depth: sessionStatus.comp_depth,
+			decomp_offset: sessionStatus.decomp_offset,
+			decomp_gain: sessionStatus.decomp_gain,
+			decomp_depth: sessionStatus.decomp_depth,
+			minimumvalve: sessionStatus.minimumvalve,
+			pressRateFswPerMin: sessionStatus.pressRateFswPerMin,
+			pressRateBarPerMin: sessionStatus.pressRateBarPerMin,
+			bufferdifference: sessionStatus.bufferdifference[sessionStatus.zaman] || 0,
+			higho: sessionStatus.higho,
+			highHumidity: sessionStatus.highHumidity,
+		});
+		global.ioServer.emit('alarmStatus', alarmManager.getStatus());
+	}
 }, 1000);
 
 // Her 3 saniyede bir livebit gönder
@@ -2068,6 +2174,49 @@ function read() {
 			sessionStatus.higho = 0;
 			sessionStatus.ventil = 0;
 		}
+	}
+}
+
+function handleDemoControl(data) {
+	const { action, param, value } = data;
+	switch (action) {
+		case 'setCikis':
+			sessionStatus.cikis = value ? 1 : 0;
+			break;
+		case 'setOksijen':
+			sessionStatus.oksijen = value ? 1 : 0;
+			break;
+		case 'setVentil':
+			sessionStatus.ventil = Number(value) || 0;
+			break;
+		case 'setOtomanuel':
+			sessionStatus.otomanuel = value ? 1 : 0;
+			break;
+		case 'setCompParam':
+			if (['comp_offset', 'comp_gain', 'comp_depth', 'decomp_offset', 'decomp_gain', 'decomp_depth', 'minimumvalve'].includes(param)) {
+				sessionStatus[param] = Number(value);
+			}
+			break;
+		case 'resetCompParams':
+			sessionStatus.comp_offset = 12;
+			sessionStatus.comp_gain = 8;
+			sessionStatus.comp_depth = 100;
+			sessionStatus.decomp_offset = 14;
+			sessionStatus.decomp_gain = 7;
+			sessionStatus.decomp_depth = 100;
+			sessionStatus.minimumvalve = 12;
+			break;
+		case 'simulateHighO2':
+			sensorData['o2'] = filters.o2.update(value ? 25 : 21.1);
+			break;
+		case 'simulateHighHumidity':
+			sensorData['humidity'] = filters.humidity.update(value ? 80 : 45);
+			break;
+		case 'toggleDoor':
+			sessionStatus.doorSensorStatus = sessionStatus.doorSensorStatus === 0 ? 1 : 0;
+			break;
+		default:
+			console.log('Unknown demoControl action:', action);
 	}
 }
 
