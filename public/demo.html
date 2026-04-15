@@ -175,6 +175,32 @@
     </div>
 
     <div class="panel" style="margin-top:12px">
+      <h2>Alarm Control</h2>
+      <div class="param-group">
+        <label>Type</label>
+        <input type="text" id="alarm-type" value="customAlarm" style="background:#0a0a1a;color:#e0e0e0;border:1px solid #444;border-radius:3px;padding:4px 6px;font-family:monospace;font-size:12px">
+        <label>Text</label>
+        <input type="text" id="alarm-text" value="Test alarm message" style="background:#0a0a1a;color:#e0e0e0;border:1px solid #444;border-radius:3px;padding:4px 6px;font-family:monospace;font-size:12px;width:100%">
+      </div>
+      <div class="btn-group">
+        <button class="danger" onclick="sendAlarm()">Send Alarm</button>
+        <button onclick="clearAlarm()">Clear This Alarm</button>
+        <button onclick="clearAllAlarms()">Clear All Alarms</button>
+      </div>
+      <div style="margin-top:8px">
+        <label style="color:#888;font-size:11px">Presets:</label>
+      </div>
+      <div class="btn-group">
+        <button class="danger" onclick="presetAlarm('highO2','High O₂ level, ventilate the chamber.')">High O2</button>
+        <button class="danger" onclick="presetAlarm('highHumidity','High Humidity, ventilate the chamber.')">High Humidity</button>
+        <button class="danger" onclick="presetAlarm('doorIsOpen','Please check the door is closed properly.')">Door Open</button>
+        <button class="danger" onclick="presetAlarm('patientEmergency','Patient Emergency!')">Patient Emergency</button>
+        <button class="danger" onclick="presetAlarm('oxygenBreak','Oxygen Starting. Put the mask on.')">O2 Break</button>
+        <button class="danger" onclick="presetAlarm('endOfSession','Session Finished.')">End of Session</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:12px">
       <h2>Comp/Decomp Parameters</h2>
       <div class="param-group">
         <label>comp_offset</label>
@@ -318,6 +344,24 @@ function sessionStart() {
 function sessionPause() { sock.emit('sessionPause'); }
 function sessionResume() { sock.emit('sessionResume'); }
 function sessionStop() { sock.emit('sessionStop'); }
+
+function sendAlarm() {
+  const type = document.getElementById('alarm-type').value.trim();
+  const text = document.getElementById('alarm-text').value.trim();
+  if (type && text) sock.emit('demoControl', { action: 'sendAlarm', type, text });
+}
+function clearAlarm() {
+  const type = document.getElementById('alarm-type').value.trim();
+  if (type) sock.emit('demoControl', { action: 'clearAlarm', type });
+}
+function clearAllAlarms() {
+  sock.emit('demoControl', { action: 'clearAlarm' });
+}
+function presetAlarm(type, text) {
+  document.getElementById('alarm-type').value = type;
+  document.getElementById('alarm-text').value = text;
+  sock.emit('demoControl', { action: 'sendAlarm', type, text });
+}
 </script>
 </body>
 </html>

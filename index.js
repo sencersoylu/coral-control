@@ -2276,6 +2276,18 @@ function handleDemoControl(data) {
 		case 'toggleDoor':
 			sessionStatus.doorSensorStatus = sessionStatus.doorSensorStatus === 0 ? 1 : 0;
 			break;
+		case 'sendAlarm':
+			if (data.type && data.text) {
+				alarmSet(data.type, data.text, data.duration || 0);
+			}
+			break;
+		case 'clearAlarm':
+			if (data.type) {
+				alarmClear(data.type);
+			} else {
+				alarmClear();
+			}
+			break;
 		default:
 			console.log('Unknown demoControl action:', action);
 	}
