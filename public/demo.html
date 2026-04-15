@@ -241,7 +241,7 @@ sock.on('disconnect', () => {
 
 // Live sensor data
 sock.on('sensorData', (d) => {
-  document.getElementById('s-pressure').textContent = d.pressure + ' FSW';
+  document.getElementById('s-pressure').textContent = d.pressure + ' bar';
   document.getElementById('s-o2').textContent = d.o2 + '%';
   document.getElementById('s-temp').textContent = d.temperature + ' C';
   document.getElementById('s-humidity').textContent = d.humidity + '%';
@@ -274,7 +274,7 @@ sock.on('sessionStatus', (s) => {
   document.getElementById('ss-exit').className = 'value ' + (s.cikis ? 'warning' : '');
   document.getElementById('ss-eop').textContent = s.eop ? 'YES' : 'no';
 
-  document.getElementById('s-target').textContent = ((s.hedef || 0) / 33.4).toFixed(2) + ' FSW';
+  document.getElementById('s-target').textContent = ((s.hedef || 0) / 33.4).toFixed(2) + ' bar';
   document.getElementById('s-diff').textContent = (typeof s.bufferdifference === 'number' ? s.bufferdifference.toFixed(2) : '--');
 
   document.getElementById('cv-pcontrol').textContent = (s.pcontrol || 0).toFixed(1);

@@ -2333,7 +2333,8 @@ function read_demo() {
 
 		// Convert back to bar for sensorData (matches read() behavior)
 		sessionStatus.pressure = sessionStatus.main_fsw / 33.4;
-		sensorData['pressure'] = filters.pressure.update(sessionStatus.pressure);
+		// No EMA filter in demo — profile is already smooth per-second
+		sensorData['pressure'] = sessionStatus.pressure;
 		sessionStatus.fsw = sessionStatus.main_fsw;
 
 		sessionStatus.o2 = sensorData['o2'];
