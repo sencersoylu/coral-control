@@ -2073,14 +2073,6 @@ function read() {
 
 function read_demo() {
 	// Simulate sensor values based on profile
-	console.log(
-		'status',
-		sessionStatus.status,
-		'zaman',
-		sessionStatus.zaman,
-		'grafikdurum',
-		sessionStatus.grafikdurum
-	);
 
 	// Update time display (simulated)
 	const now = new Date();
@@ -2095,6 +2087,7 @@ function read_demo() {
 
 	// Sistem aktifse kontrol et
 	if (sessionStatus.status > 0 && sessionStatus.zaman > 5) {
+
 		// Simulate pressure based on profile — linear ramp toward target
 		let targetPressure = 0;
 		if (
@@ -2133,8 +2126,6 @@ function read_demo() {
 		) {
 			sessionStatus.hedef = 0;
 		}
-
-		console.log('hedef (demo): ', sessionStatus.hedef.toFixed(2));
 
 		// Grafik durumunu belirle (yükseliş/iniş/düz)
 		sessionStatus.lastdurum = sessionStatus.grafikdurum;
@@ -2248,13 +2239,6 @@ function read_demo() {
 		sessionStatus.pressRateFswPerMin = rateFsw;
 		sessionStatus.pressRateBarPerMin = rateFsw / 33.4;
 
-		console.log('difference (demo):', difference);
-		console.log(
-			'pressure (demo):',
-			sessionStatus.pressure,
-			sessionStatus.fsw.toFixed(2)
-		);
-
 		// İlk basınç kaydı
 		if (sessionStatus.zaman == 1) {
 			sessionStatus.ilkbasinc = sessionStatus.fsw;
@@ -2280,8 +2264,6 @@ function read_demo() {
 						sessionStatus.bufferdifference[sessionStatus.zaman - 2]) /
 					3;
 
-				console.log('avgDiff (demo)', avgDifference.toFixed(2));
-
 				// Kompresör kontrolü (simulated)
 				sessionStatus.pcontrol =
 					sessionStatus.comp_offset +
@@ -2301,36 +2283,23 @@ function read_demo() {
 					if (sessionStatus.grafikdurum == 1) {
 						// Yükseliş
 						if (difference > 0.1) {
-							console.log(
-								'Demo: Would open comp valve to',
-								sessionStatus.pcontrol
-							);
 							// compValve(sessionStatus.pcontrol); - disabled for demo
 						} else if (avgDifference < -0.6) {
-							console.log('Demo: Would set comp valve to minimum');
 							// compValve(sessionStatus.minimumvalve); - disabled for demo
 						} else if (avgDifference < -1.5) {
-							console.log('Demo: Would close comp valve');
 							// compValve(0); - disabled for demo
 						}
 					} else if (sessionStatus.grafikdurum == 2) {
 						// Düz
 						if (difference > 0.1) {
-							console.log(
-								'Demo: Would open comp valve to',
-								sessionStatus.pcontrol
-							);
+							// Would open comp valve
 						} else if (difference < -1) {
-							console.log(
-								'Demo: Would open decomp valve to',
-								Math.abs(control)
-							);
+							// Would open decomp valve
 						} else {
-							console.log('Demo: Would close both valves');
+							// Would close both valves
 						}
 					} else {
-						// İniş
-						console.log('Demo: Would open decomp valve to', Math.abs(control));
+						// İniş — would open decomp valve
 					}
 				}
 			}
@@ -2358,17 +2327,11 @@ function read_demo() {
 						sessionStatus.fsw / sessionStatus.comp_depth;
 					if (sessionStatus.pcontrol < 15) sessionStatus.pcontrol = 16;
 				}
-				console.log(
-					'Demo: Ventilation mode - comp valve:',
-					sessionStatus.pcontrol,
-					'decomp valve:',
-					sessionStatus.vanacikis
-				);
 			}
 
 			// Çıkış durumu
 			if (sessionStatus.cikis == 1) {
-				console.log('Demo: Would open decomp valve to 90');
+				// Would open decomp valve to 90
 			}
 
 			// Yüksek oksijen kontrolü (simulated)
@@ -2376,14 +2339,6 @@ function read_demo() {
 				sessionStatus.ventil = 1;
 				sessionStatus.vanacikis = 30;
 			}
-
-			console.log(
-				sessionStatus.zaman,
-				sessionStatus.profile.length,
-				sessionStatus.cikis,
-				sessionStatus.eop,
-				sessionStatus.main_fsw
-			);
 
 			// Seans sonu kontrolü
 			if (
