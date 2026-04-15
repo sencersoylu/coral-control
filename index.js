@@ -2310,8 +2310,8 @@ function read_demo() {
 	// Sistem aktifse kontrol et
 	if (sessionStatus.status > 0 && sessionStatus.zaman > 5) {
 
-		// Simulate pressure based on profile — linear ramp toward target
-		// Profile values are in bar, internal calc in FSW, display in bar
+		// Simulate pressure based on profile
+		// Profile already contains per-second interpolated values (bar)
 		let targetBar = 0;
 		if (
 			sessionStatus.profile.length > sessionStatus.zaman &&
@@ -2328,14 +2328,8 @@ function read_demo() {
 		const targetFsw = targetBar * 33.4;
 		sessionStatus.hedef = targetFsw;
 
-		// Linear ramp in FSW: move main_fsw toward target at max 0.5 FSW/sec
-		const maxRatePerSec = 0.5;
-		const diff = targetFsw - sessionStatus.main_fsw;
-		if (Math.abs(diff) <= maxRatePerSec) {
-			sessionStatus.main_fsw = targetFsw;
-		} else {
-			sessionStatus.main_fsw += Math.sign(diff) * maxRatePerSec;
-		}
+		// Follow profile directly — profile is already ramped per second
+		sessionStatus.main_fsw = targetFsw;
 
 		// Convert back to bar for sensorData (matches read() behavior)
 		sessionStatus.pressure = sessionStatus.main_fsw / 33.4;
