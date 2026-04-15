@@ -48,6 +48,12 @@
 <div class="container">
   <h1>DEMO DASHBOARD <span id="connStatus" class="disconnected">[disconnected]</span></h1>
 
+  <!-- CHART: Full width pressure graph -->
+  <div class="panel" style="grid-column: 1 / -1;">
+    <h2>Pressure Chart</h2>
+    <canvas id="pressureChart" width="1360" height="220" style="width:100%;height:220px;background:#0a0a1a;border-radius:4px;"></canvas>
+  </div>
+
   <!-- LEFT: Live Data -->
   <div>
     <div class="panel">
@@ -229,6 +235,176 @@
 <script>
 const sock = io();
 
+// --- Pressure Chart ---
+const chartCanvas = document.getElementById('pressureChart');
+const chartCtx = chartCanvas.getContext('2d');
+const chartData = { pressure: [], target: [], step: [], maxPoints: 0 };
+let chartSessionActive = false;
+
+function resetChart() {
+  chartData.pressure = [];
+  chartData.target = [];
+  chartData.step = [];
+}
+
+function addChartPoint(pressureBar, targetBar, stepType) {
+  chartData.pressure.push(pressureBar);
+  chartData.target.push(targetBar);
+  chartData.step.push(stepType);
+  // Keep max 2 hours of data (7200 seconds)
+  if (chartData.pressure.length > 7200) {
+    chartData.pressure.shift();
+    chartData.target.shift();
+    chartData.step.shift();
+  }
+}
+
+function drawChart() {
+  const W = chartCanvas.width;
+  const H = chartCanvas.height;
+  const ctx = chartCtx;
+  const len = chartData.pressure.length;
+  if (len < 2) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#555';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Waiting for session data...', W / 2, H / 2);
+    return;
+  }
+
+  // Find max pressure for Y scale
+  let maxP = 0;
+  for (let i = 0; i < len; i++) {
+    if (chartData.target[i] > maxP) maxP = chartData.target[i];
+    if (chartData.pressure[i] > maxP) maxP = chartData.pressure[i];
+  }
+  maxP = Math.max(maxP * 1.15, 0.5); // 15% headroom, min 0.5 bar
+
+  const pad = { top: 20, right: 50, bottom: 30, left: 55 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  // X: time in seconds, Y: pressure in bar
+  const xScale = plotW / (len - 1);
+  const yScale = plotH / maxP;
+  const toX = (i) => pad.left + i * xScale;
+  const toY = (v) => pad.top + plotH - v * yScale;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw O2/air background regions
+  for (let i = 0; i < len - 1; i++) {
+    const step = chartData.step[i];
+    if (step === 'o') {
+      ctx.fillStyle = 'rgba(91, 156, 246, 0.12)'; // blue for O2
+    } else if (step === 'air') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.02)'; // subtle for air
+    } else {
+      continue;
+    }
+    ctx.fillRect(toX(i), pad.top, Math.ceil(xScale) + 1, plotH);
+  }
+
+  // Draw grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  const ySteps = 5;
+  for (let i = 0; i <= ySteps; i++) {
+    const yVal = (maxP / ySteps) * i;
+    const y = toY(yVal);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(W - pad.right, y);
+    ctx.stroke();
+    // Y axis labels
+    ctx.fillStyle = '#555';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(yVal.toFixed(2), pad.left - 5, y + 3);
+  }
+
+  // X axis time labels (every 60s)
+  ctx.fillStyle = '#555';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  const xLabelInterval = Math.max(60, Math.floor(len / 10 / 60) * 60);
+  for (let i = 0; i < len; i += xLabelInterval) {
+    const m = String(Math.floor(i / 60)).padStart(2, '0');
+    const s = String(i % 60).padStart(2, '0');
+    ctx.fillText(m + ':' + s, toX(i), H - pad.bottom + 15);
+  }
+
+  // Draw target line (dashed)
+  ctx.strokeStyle = 'rgba(255, 107, 53, 0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  for (let i = 0; i < len; i++) {
+    const x = toX(i);
+    const y = toY(chartData.target[i]);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw pressure line (solid)
+  ctx.strokeStyle = '#2dd4a8';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < len; i++) {
+    const x = toX(i);
+    const y = toY(chartData.pressure[i]);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Current time marker
+  const lastX = toX(len - 1);
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(lastX, pad.top);
+  ctx.lineTo(lastX, pad.top + plotH);
+  ctx.stroke();
+
+  // Legend
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  // Pressure
+  ctx.fillStyle = '#2dd4a8';
+  ctx.fillRect(pad.left + 5, pad.top + 5, 12, 3);
+  ctx.fillText('Pressure', pad.left + 22, pad.top + 10);
+  // Target
+  ctx.fillStyle = 'rgba(255, 107, 53, 0.7)';
+  ctx.fillRect(pad.left + 100, pad.top + 5, 12, 3);
+  ctx.fillText('Target', pad.left + 117, pad.top + 10);
+  // O2 zone
+  ctx.fillStyle = 'rgba(91, 156, 246, 0.4)';
+  ctx.fillRect(pad.left + 175, pad.top + 3, 12, 8);
+  ctx.fillStyle = '#5b9cf6';
+  ctx.fillText('O2', pad.left + 192, pad.top + 10);
+
+  // Y axis title
+  ctx.save();
+  ctx.translate(12, pad.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#666';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('bar', 0, 0);
+  ctx.restore();
+}
+
+// Initial draw
+drawChart();
+
 // Connection status
 sock.on('connect', () => {
   document.getElementById('connStatus').textContent = '[connected]';
@@ -300,6 +476,21 @@ sock.on('sessionStatus', (s) => {
   syncInput('p-decomp-gain', s.decomp_gain);
   syncInput('p-decomp-depth', s.decomp_depth);
   syncInput('p-minimumvalve', s.minimumvalve);
+
+  // Chart update
+  if (s.status === 1 && s.zaman > 0) {
+    if (!chartSessionActive) {
+      resetChart();
+      chartSessionActive = true;
+    }
+    const pressBar = s.pressure || 0;
+    const targetBar = (s.hedef || 0) / 33.4;
+    addChartPoint(pressBar, targetBar, s.adim || 'air');
+    drawChart();
+  } else if (s.status === 0 && chartSessionActive) {
+    chartSessionActive = false;
+    drawChart(); // final draw
+  }
 });
 
 function syncInput(id, val) {
