@@ -196,7 +196,9 @@ const migrateDatabase = require('./scripts/migrate-db');
 		console.log('Database migrations completed.');
 	}
 
-	if (!dbExists) {
+	// Insert default sensors if table is empty (new DB or failed first run)
+	const sensorCount = await db.sensors.count();
+	if (sensorCount === 0) {
 		await insertDefaultSensorData();
 	}
 	init();
