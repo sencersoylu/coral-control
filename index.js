@@ -2457,7 +2457,6 @@ function read_demo() {
 		var s_display = zeroPad(sessionStatus.zaman % 60, 2);
 
 		console.log('Demo time:', m_display + ':' + s_display);
-		console.log('');
 
 		// Yüksek oksijen kontrolü (simulated)
 		if (sessionStatus.mainov > sessionStatus.higho2) {
