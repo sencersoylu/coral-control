@@ -2161,104 +2161,39 @@ function read_demo() {
 			sessionStatus.grafikdurum = 0; // Default to descent when at end
 		}
 
-		// Oksijen molası kontrolü - Düz grafik durumunda (demo mode)
+		// O2 break detection — based on profile step type transitions (air ↔ o)
 		if (
-			sessionStatus.grafikdurum === 2 &&
-			sessionStatus.otomanuel == 0 &&
-			sessionStatus.status == 1
+			sessionStatus.profile[sessionStatus.zaman] &&
+			sessionStatus.profile[sessionStatus.zaman + 1] &&
+			sessionStatus.profile[sessionStatus.zaman][2] == 'air' &&
+			sessionStatus.profile[sessionStatus.zaman + 1][2] == 'o' &&
+			sessionStatus.oksijen == 0
 		) {
-			if (
-				sessionStatus.oksijen == 0 &&
-				sessionStatus.oksijenBaslangicZamani == 0 &&
-				sessionStatus.oksijenBitisZamani == 0
-			) {
-				sessionStatus.oksijen = 1;
-				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1;
-				sessionStatus.oksijenBitisZamani = sessionStatus.zaman + 1 * 60;
-				alarmSet(
-					'oxygenBreak',
-					'Treatment Starting. Please put the mask on.',
-					0
-				);
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-			} else if (
-				sessionStatus.oksijen == 1 &&
-				sessionStatus.zaman >= sessionStatus.oksijenBitisZamani
-			) {
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-				sessionStatus.oksijen = 0;
-				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1 * 60;
-				sessionStatus.oksijenBitisZamani = 0;
-				alarmSet(
-					'oxygenBreak',
-					'Please take off your mask. Oxygen Break Time.',
-					0
-				);
-			} else if (
-				sessionStatus.oksijen == 0 &&
-				sessionStatus.zaman >= sessionStatus.oksijenBaslangicZamani &&
-				sessionStatus.oksijenBitisZamani == 0
-			) {
-				sessionStatus.oksijen = 1;
-				sessionStatus.oksijenBaslangicZamani = sessionStatus.zaman + 1;
-				sessionStatus.oksijenBitisZamani = sessionStatus.zaman + 1 * 60;
-				alarmSet('oxygenBreak', 'Please put the mask on.', 0);
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-			}
-
-			console.log(
-				'oksijen',
-				sessionStatus.oksijen,
-				'oksijenBaslangicZamani',
-				sessionStatus.oksijenBaslangicZamani,
-				'oksijenBitisZamani',
-				sessionStatus.oksijenBitisZamani
+			sessionStatus.oksijen = 1;
+			alarmSet('oxygenBreak', 'Oxygen Starting. Put the mask on.', 0);
+		} else if (
+			sessionStatus.lastdurum === 2 &&
+			sessionStatus.cikis == 0 &&
+			sessionStatus.grafikdurum == 0
+		) {
+			sessionStatus.oksijen = 0;
+			sessionStatus.oksijenBaslangicZamani = 0;
+			sessionStatus.oksijenBitisZamani = 0;
+			alarmSet(
+				'treatmenFinished',
+				'Treatment Finished. Take the mask off. Decompression Starting.',
+				0
 			);
-		} else {
-			// Düz durumdan çıkıldığında timer'ları sıfırla
-			if (
-				sessionStatus.lastdurum === 2 &&
-				sessionStatus.cikis == 0 &&
-				sessionStatus.grafikdurum == 0
-			) {
-				sessionStatus.oksijen = 0;
-				sessionStatus.oksijenBaslangicZamani = 0;
-				sessionStatus.oksijenBitisZamani = 0;
-				alarmSet(
-					'treatmenFinished',
-					'Treatment Finished. Please take off your mask. Decompression Starting.',
-					0
-				);
-				console.log(
-					'Değişti : oksijen',
-					sessionStatus.oksijen,
-					'oksijenBaslangicZamani',
-					sessionStatus.oksijenBaslangicZamani,
-					'oksijenBitisZamani',
-					sessionStatus.oksijenBitisZamani
-				);
-			}
+			oxygenClose();
+		} else if (
+			sessionStatus.profile[sessionStatus.zaman] &&
+			sessionStatus.profile[sessionStatus.zaman + 1] &&
+			sessionStatus.profile[sessionStatus.zaman][2] == 'o' &&
+			sessionStatus.profile[sessionStatus.zaman + 1][2] == 'air' &&
+			sessionStatus.oksijen == 1
+		) {
+			sessionStatus.oksijen = 0;
+			alarmSet('oxygenBreak', 'Oxygen Stopped. Take the mask off.', 0);
 		}
 
 		// Check if step (adım) has changed
