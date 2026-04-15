@@ -2095,37 +2095,34 @@ function read_demo() {
 
 	// Sistem aktifse kontrol et
 	if (sessionStatus.status > 0 && sessionStatus.zaman > 5) {
-		// Simulate pressure based on profile (demo mode)zaxaza
+		// Simulate pressure based on profile — linear ramp toward target
+		let targetPressure = 0;
 		if (
 			sessionStatus.profile.length > sessionStatus.zaman &&
 			sessionStatus.profile[sessionStatus.zaman]
 		) {
-			const rawPressure = sessionStatus.profile[sessionStatus.zaman][1];
-			sensorData['pressure'] = filters.pressure.update(rawPressure);
-			sessionStatus.hedef =
-				sessionStatus.profile[sessionStatus.zaman][1] * 33.4;
+			targetPressure = sessionStatus.profile[sessionStatus.zaman][1];
 		} else if (
 			sessionStatus.profile.length > 0 &&
 			sessionStatus.profile[sessionStatus.profile.length - 1]
 		) {
-			const rawPressure =
-				sessionStatus.profile[sessionStatus.profile.length - 1][1];
-			sensorData['pressure'] = filters.pressure.update(rawPressure);
-			sessionStatus.hedef =
-				sessionStatus.profile[sessionStatus.profile.length - 1][1] * 33.4;
-		} else {
-			sensorData['pressure'] = filters.pressure.update(0);
-			sessionStatus.hedef = 0;
+			targetPressure = sessionStatus.profile[sessionStatus.profile.length - 1][1];
 		}
 
-		// Simulate other sensor data
+		sessionStatus.hedef = targetPressure * 33.4;
 
-		// Update session status with simulated data
-		sessionStatus.pressure = sessionStatus.hedef / 33.4;
-		sessionStatus.main_fsw = sessionStatus.hedef / 33.4;
-		sensorData['pressure'] = filters.pressure.update(
-			sessionStatus.hedef / 33.4
-		);
+		// Linear ramp: move main_fsw toward target at max 0.5 FSW/sec
+		const maxRatePerSec = 0.5;
+		const diff = targetPressure - sessionStatus.main_fsw;
+		if (Math.abs(diff) <= maxRatePerSec) {
+			sessionStatus.main_fsw = targetPressure;
+		} else {
+			sessionStatus.main_fsw += Math.sign(diff) * maxRatePerSec;
+		}
+
+		sensorData['pressure'] = filters.pressure.update(sessionStatus.main_fsw);
+		sessionStatus.pressure = sessionStatus.main_fsw;
+		sessionStatus.fsw = sessionStatus.main_fsw;
 
 		sessionStatus.o2 = sensorData['o2'];
 
