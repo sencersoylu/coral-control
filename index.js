@@ -636,27 +636,77 @@ async function init() {
 		});
 
 		dashSocket.on('sessionStart', (data) => {
-			if (socket && socket.connected) {
-				socket.emit('sessionStart', JSON.stringify(data));
+			const dt = data;
+			let dalisSuresi = 0;
+			let cikisSuresi = 0;
+			if (dt.dalisSuresi == 3) {
+				dalisSuresi = Math.round(dt.setDerinlik / 1);
+				cikisSuresi = Math.round(dt.setDerinlik / 1);
+			} else if (dt.dalisSuresi == 2) {
+				dalisSuresi = Math.round(dt.setDerinlik / 0.66666666);
+				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
+			} else if (dt.dalisSuresi == 1) {
+				dalisSuresi = Math.round(dt.setDerinlik / 0.5);
+				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
 			}
+
+			sessionStatus.speed = dt.dalisSuresi;
+			sessionStatus.dalisSuresi = dalisSuresi;
+			sessionStatus.cikisSuresi = cikisSuresi;
+			sessionStatus.toplamSure = dt.toplamSure;
+			sessionStatus.setDerinlik = dt.setDerinlik;
+			sessionStatus.status = 1;
+			sessionStatus.zaman = 0;
+			sessionStatus.eop = 0;
+			sessionStatus.cikis = 0;
+			sessionStatus.main_fsw = 0;
+			sessionStatus.pressure = 0;
+			sessionStatus.hedef = 0;
+
+			const middleDuration =
+				sessionStatus.toplamSure -
+				(sessionStatus.dalisSuresi + sessionStatus.cikisSuresi);
+			const safeMiddle = Math.max(
+				0,
+				Number.isFinite(middleDuration) ? middleDuration : 0
+			);
+			const setProfileRaw = [
+				[sessionStatus.dalisSuresi, sessionStatus.setDerinlik, 'air'],
+				[safeMiddle, sessionStatus.setDerinlik, 'air'],
+				[sessionStatus.cikisSuresi, 0, 'air'],
+			];
+			const setProfile = setProfileRaw.filter(
+				(seg) => Array.isArray(seg) && Number.isFinite(seg[0]) && seg[0] > 0
+			);
+			const quickProfile = ProfileUtils.createQuickProfile(setProfile);
+			setSessionProfile(quickProfile.toTimeBasedArrayBySeconds());
+			console.log('Dashboard sessionStart:', sessionStatus.profile.length, 'seconds');
 		});
 
 		dashSocket.on('sessionPause', () => {
-			if (socket && socket.connected) {
-				socket.emit('sessionPause', '{}');
-			}
+			sessionStatus.status = 2;
+			sessionStatus.otomanuel = 1;
+			sessionStatus.pauseTime = sessionStatus.zaman;
+			sessionStatus.pauseDepth = sensorData['pressure'];
 		});
 
 		dashSocket.on('sessionResume', () => {
-			if (socket && socket.connected) {
-				socket.emit('sessionResume', '{}');
-			}
+			const pauseEndTime = sessionStatus.zaman;
+			const currentPressure = sensorData['pressure'];
+			const stepDuration = pauseEndTime - sessionStatus.pauseTime;
+			sessionResume(
+				sessionStatus.pauseTime,
+				pauseEndTime,
+				currentPressure,
+				sessionStatus.pauseDepth,
+				stepDuration
+			);
+			sessionStatus.status = 1;
+			sessionStatus.otomanuel = 0;
 		});
 
 		dashSocket.on('sessionStop', () => {
-			if (socket && socket.connected) {
-				socket.emit('sessionStop', '{}');
-			}
+			sessionStop();
 		});
 
 		dashSocket.on('disconnect', () => {
