@@ -53,6 +53,13 @@ function buildClientSessionStatus() {
 		chamberStatusText: sessionStatus.chamberStatusText,
 		patientWarningStatus: sessionStatus.patientWarningStatus,
 		speed: sessionStatus.speed,
+		grafikdurum: sessionStatus.grafikdurum,
+		otomanuel: sessionStatus.otomanuel,
+		oksijen: sessionStatus.oksijen,
+		adim: sessionStatus.adim,
+		cikis: sessionStatus.cikis,
+		pressure: sessionStatus.pressure,
+		main_fsw: sessionStatus.main_fsw,
 	};
 }
 
