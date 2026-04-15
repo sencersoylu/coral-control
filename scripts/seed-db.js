@@ -1,10 +1,9 @@
-const bcrypt = require('bcryptjs');
 const db = require('../src/models');
 
 async function seedDatabase() {
 	console.log('Seeding database...');
 
-	// --- Sensors ---
+	// --- Sensors (from production DB 2026-03-08) ---
 	const sensorCount = await db.sensors.count();
 	if (sensorCount === 0) {
 		const sensors = [
@@ -26,7 +25,7 @@ async function seedDatabase() {
 				sensorName: 'temperature',
 				sensorText: 'Temperature',
 				sensorMemory: 0,
-				sensorSymbol: '°C',
+				sensorSymbol: '\u00b0C',
 				sensorOffset: 0,
 				sensorLowerLimit: 0,
 				sensorUpperLimit: 55,
@@ -69,19 +68,19 @@ async function seedDatabase() {
 		console.log('  Sensors: already populated (' + sensorCount + ' records)');
 	}
 
-	// --- Users ---
+	// --- Users (pre-hashed passwords from production DB) ---
 	const userCount = await db.users.count();
 	if (userCount === 0) {
 		const users = [
 			{
 				username: 'sencersoylu',
-				password: await bcrypt.hash('admin123', 10),
+				password: '$2a$10$x68gB3Ss7O4azAPswspxvuNuwrEbE7ndIAIfzjj0L5iPT4UuWmM7G',
 				name: 'Sencer SOYLU',
 				role: 'admin',
 			},
 			{
 				username: 'Operator',
-				password: await bcrypt.hash('operator123', 10),
+				password: '$2a$10$gBcOHqHLjj6nl4TcGqaDKOtsJRGmMpckXKz6yKfFZRuRknIhtfwlq',
 				name: 'Operator',
 				role: 'user',
 			},
