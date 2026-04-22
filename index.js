@@ -638,6 +638,8 @@ async function init() {
 			o2: Number(sensorData['o2']?.toFixed?.(0)) || 0,
 			temperature: Number(sensorData['temperature']?.toFixed?.(1)) || 0,
 			humidity: Number(sensorData['humidity']?.toFixed?.(0)) || 0,
+			airPressure: Number(sensorData['air_pressure']?.toFixed?.(1)) || 0,
+			o2Pressure: Number(sensorData['o2_pressure']?.toFixed?.(1)) || 0,
 		});
 		dashSocket.emit('sessionStatus', sessionStatus);
 		dashSocket.emit('alarmStatus', alarmManager.getStatus());
@@ -863,6 +865,30 @@ async function init() {
 					)
 				);
 
+				if (sensorCalibrationData['air_pressure']) {
+					sensorData['air_pressure'] = linearConversion(
+						sensorCalibrationData['air_pressure'].sensorLowerLimit,
+						sensorCalibrationData['air_pressure'].sensorUpperLimit,
+						sensorCalibrationData['air_pressure'].sensorAnalogLower,
+						sensorCalibrationData['air_pressure'].sensorAnalogUpper,
+						dataObject.data[7],
+						sensorCalibrationData['air_pressure'].sensorDecimal
+					);
+					sessionStatus.airPressure = sensorData['air_pressure'];
+				}
+
+				if (sensorCalibrationData['o2_pressure']) {
+					sensorData['o2_pressure'] = linearConversion(
+						sensorCalibrationData['o2_pressure'].sensorLowerLimit,
+						sensorCalibrationData['o2_pressure'].sensorUpperLimit,
+						sensorCalibrationData['o2_pressure'].sensorAnalogLower,
+						sensorCalibrationData['o2_pressure'].sensorAnalogUpper,
+						dataObject.data[8],
+						sensorCalibrationData['o2_pressure'].sensorDecimal
+					);
+					sessionStatus.o2Pressure = sensorData['o2_pressure'];
+				}
+
 				// Sensör verilerini 10 saniyede bir güncelle
 				const currentTime = Date.now();
 				if (currentTime - lastSensorUpdateTime >= SENSOR_UPDATE_INTERVAL) {
@@ -874,7 +900,11 @@ async function init() {
 						dataObject.data[2] || null, // O2 raw data
 						sensorData['o2'], // O2 real data
 						dataObject.data[5],
-						sensorData['humidity']
+						sensorData['humidity'],
+						dataObject.data[7] || null,
+						sensorData['air_pressure'],
+						dataObject.data[8] || null,
+						sensorData['o2_pressure']
 					).catch((error) => {
 						console.error('Sensör güncelleme hatası:', error);
 					});
@@ -1587,6 +1617,10 @@ setInterval(() => {
 			45 + (Math.random() * 10 - 5)
 		); // 40-50%
 		sensorData['pressure'] = filters.pressure.update(0);
+		sensorData['air_pressure'] = 8.0;
+		sensorData['o2_pressure'] = 6.0;
+		sessionStatus.airPressure = sensorData['air_pressure'];
+		sessionStatus.o2Pressure = sensorData['o2_pressure'];
 		read_demo();
 	}
 
@@ -1598,6 +1632,8 @@ setInterval(() => {
 			o2: Number(sensorData['o2']?.toFixed?.(0)) || 0,
 			temperature: Number(sensorData['temperature']?.toFixed?.(1)) || 0,
 			humidity: Number(sensorData['humidity']?.toFixed?.(0)) || 0,
+			airPressure: Number(sensorData['air_pressure']?.toFixed?.(1)) || 0,
+			o2Pressure: Number(sensorData['o2_pressure']?.toFixed?.(1)) || 0,
 		};
 		global.ioServer.emit('sensorData', dashData);
 		global.ioServer.emit('sessionStatus', {
@@ -1650,6 +1686,8 @@ function read() {
 			o2: sensorData['o2'],
 			temperature: sensorData['temperature'],
 			humidity: sensorData['humidity'],
+			airPressure: sensorData['air_pressure'],
+			o2Pressure: sensorData['o2_pressure'],
 			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
 		});
@@ -2733,6 +2771,8 @@ function read_demo() {
 			o2: Number(sensorData['o2'].toFixed(0)) || 0,
 			temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
 			humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
+			airPressure: Number((sensorData['air_pressure'] || 0).toFixed(1)) || 0,
+			o2Pressure: Number((sensorData['o2_pressure'] || 0).toFixed(1)) || 0,
 			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
 		});
@@ -3772,6 +3812,8 @@ async function logSessionSensorData() {
 			o2: sensorData['o2'] || 0,
 			temperature: sensorData['temperature'] || 0,
 			humidity: sensorData['humidity'] || 0,
+			airPressure: sensorData['air_pressure'] || 0,
+			o2Pressure: sensorData['o2_pressure'] || 0,
 			compValveAngle: currentCompValveAngle,
 			decompValveAngle: currentDecompValveAngle,
 			pressureDifference: parseFloat((targetPressure - (sensorData['pressure'] || 0)).toFixed(4)),

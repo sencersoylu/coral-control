@@ -130,6 +130,8 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			decompValveAngle: { type: Sequelize.FLOAT, defaultValue: null },
 			pressureDifference: { type: Sequelize.FLOAT, defaultValue: null },
 			ventilationMode: { type: Sequelize.INTEGER, defaultValue: null },
+			airPressure: { type: Sequelize.FLOAT, defaultValue: null },
+			o2Pressure: { type: Sequelize.FLOAT, defaultValue: null },
 		};
 
 		for (const [colName, colDef] of Object.entries(newSensorLogColumns)) {

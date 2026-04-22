@@ -175,7 +175,7 @@ const updateSensorData = async (sensorId, rawData, sensorReal) => {
 };
 
 // Toplu sensör güncelleme fonksiyonu
-// updateSensor(pressure_raw_data, pressure_real_data, temperature_raw_data, temperature_real_data, o2_raw_data, o2_real_data, humidity_raw_data, humidity_real_data)
+// updateSensor(pressure_raw_data, pressure_real_data, temperature_raw_data, temperature_real_data, o2_raw_data, o2_real_data, humidity_raw_data, humidity_real_data, air_pressure_raw_data, air_pressure_real_data, o2_pressure_raw_data, o2_pressure_real_data)
 const updateSensor = async (
 	pressureRawData,
 	pressureRealData,
@@ -184,7 +184,11 @@ const updateSensor = async (
 	o2RawData,
 	o2RealData,
 	humidityRawData,
-	humidityRealData
+	humidityRealData,
+	airPressureRawData,
+	airPressureRealData,
+	o2PressureRawData,
+	o2PressureRealData
 ) => {
 	try {
 		const db = require('../models');
@@ -268,15 +272,49 @@ const updateSensor = async (
 			sensorUpdates.humidity = { sensorReal: humidityRealData };
 		}
 
+		// Air pressure sensörü
+		if (
+			airPressureRawData !== undefined &&
+			airPressureRawData !== null &&
+			airPressureRealData !== undefined &&
+			airPressureRealData !== null
+		) {
+			sensorUpdates.air_pressure = {
+				rawData: airPressureRawData,
+				sensorReal: airPressureRealData,
+			};
+		} else if (airPressureRawData !== undefined && airPressureRawData !== null) {
+			sensorUpdates.air_pressure = { rawData: airPressureRawData };
+		} else if (airPressureRealData !== undefined && airPressureRealData !== null) {
+			sensorUpdates.air_pressure = { sensorReal: airPressureRealData };
+		}
+
+		// O2 pressure sensörü
+		if (
+			o2PressureRawData !== undefined &&
+			o2PressureRawData !== null &&
+			o2PressureRealData !== undefined &&
+			o2PressureRealData !== null
+		) {
+			sensorUpdates.o2_pressure = {
+				rawData: o2PressureRawData,
+				sensorReal: o2PressureRealData,
+			};
+		} else if (o2PressureRawData !== undefined && o2PressureRawData !== null) {
+			sensorUpdates.o2_pressure = { rawData: o2PressureRawData };
+		} else if (o2PressureRealData !== undefined && o2PressureRealData !== null) {
+			sensorUpdates.o2_pressure = { sensorReal: o2PressureRealData };
+		}
+
 		// Eğer hiçbir sensör verisi yoksa hata döndür
 		if (Object.keys(sensorUpdates).length === 0) {
 			throw new Error(
-				'En az bir sensör verisi gönderilmelidir (pressure, temperature, o2, humidity)'
+				'En az bir sensör verisi gönderilmelidir (pressure, temperature, o2, humidity, air_pressure, o2_pressure)'
 			);
 		}
 
 		// Her sensörü güncelle
-		const sensorNames = ['pressure', 'temperature', 'o2', 'humidity'];
+		const sensorNames = ['pressure', 'temperature', 'o2', 'humidity', 'air_pressure', 'o2_pressure'];
 		for (const sensorName of sensorNames) {
 			const sensorData = sensorUpdates[sensorName];
 			if (!sensorData) continue;

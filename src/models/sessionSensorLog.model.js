@@ -53,6 +53,16 @@ module.exports = (sequelize, Sequelize) => {
 				allowNull: true,
 				comment: 'Nem (%)',
 			},
+			airPressure: {
+				type: Sequelize.FLOAT,
+				allowNull: true,
+				comment: 'Hava basıncı (bar)',
+			},
+			o2Pressure: {
+				type: Sequelize.FLOAT,
+				allowNull: true,
+				comment: 'O2 basıncı (bar)',
+			},
 			compValveAngle: {
 				type: Sequelize.FLOAT,
 				allowNull: true,
