@@ -823,6 +823,7 @@ async function init() {
 				) {
 					alarmSet('smokeDetector', 'Smoke Detected', 0);
 					sessionStatus.smokeAlarm = true;
+					socket.emit('writeBit', { register: 'M0202', value: 0 });
 				} else if (
 					sessionStatus.smokeAlarm == true &&
 					sessionStatus.smokeSensorStatus == 0
