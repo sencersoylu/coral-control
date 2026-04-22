@@ -68,6 +68,45 @@ async function seedDatabase() {
 		console.log('  Sensors: already populated (' + sensorCount + ' records)');
 	}
 
+	// --- Ensure air_pressure and o2_pressure sensors exist (idempotent) ---
+	const extraSensors = [
+		{
+			sensorID: 5,
+			sensorName: 'air_pressure',
+			sensorText: 'Air Pressure',
+			sensorMemory: 0,
+			sensorSymbol: 'bar',
+			sensorOffset: 0,
+			sensorLowerLimit: 0,
+			sensorUpperLimit: 16,
+			sensorAnalogUpper: 16383,
+			sensorAnalogLower: 3224,
+			sensorDecimal: 1,
+		},
+		{
+			sensorID: 6,
+			sensorName: 'o2_pressure',
+			sensorText: 'O2 Pressure',
+			sensorMemory: 0,
+			sensorSymbol: 'bar',
+			sensorOffset: 0,
+			sensorLowerLimit: 0,
+			sensorUpperLimit: 16,
+			sensorAnalogUpper: 16383,
+			sensorAnalogLower: 3224,
+			sensorDecimal: 1,
+		},
+	];
+	for (const s of extraSensors) {
+		const [, created] = await db.sensors.findOrCreate({
+			where: { sensorName: s.sensorName },
+			defaults: s,
+		});
+		if (created) {
+			console.log(`  Sensors: ${s.sensorName} inserted`);
+		}
+	}
+
 	// --- Users (pre-hashed passwords from production DB) ---
 	const userCount = await db.users.count();
 	if (userCount === 0) {
