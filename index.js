@@ -294,6 +294,7 @@ let sessionStatus = {
 	doorStatus: 0,
 	pressure: 0,
 	patientWarning: false,
+	smokeAlarm: false,
 
 	o2: 0,
 	bufferdifference: [],
@@ -814,6 +815,19 @@ async function init() {
 					socket.emit('writeBit', { register: 'M0200', value: 0 });
 					alarmSet('patientWarning', 'Patient Warning', 0);
 					sessionStatus.patientWarning = true;
+				}
+
+				if (
+					sessionStatus.smokeAlarm == false &&
+					sessionStatus.smokeSensorStatus == 1
+				) {
+					alarmSet('smokeDetector', 'Smoke Detected', 0);
+					sessionStatus.smokeAlarm = true;
+				} else if (
+					sessionStatus.smokeAlarm == true &&
+					sessionStatus.smokeSensorStatus == 0
+				) {
+					sessionStatus.smokeAlarm = false;
 				}
 
 				sensorData['pressure'] = linearConversion(
@@ -2696,6 +2710,7 @@ function read_demo() {
 					doorStatus: 0,
 					pressure: 0,
 					patientWarning: false,
+					smokeAlarm: false,
 					o2: 0,
 					bufferdifference: [],
 					olcum: [],
