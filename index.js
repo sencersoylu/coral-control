@@ -802,8 +802,10 @@ async function init() {
 			const dataObject = JSON.parse(data);
 			//console.log('length', dataObject.data.length);
 			if (dataObject.data.length > 1) {
-				sessionStatus.patientWarningStatus = dataObject.data[10];
-				sessionStatus.doorSensorStatus = dataObject.data[11];
+				const statusByte = dataObject.data[10];
+				sessionStatus.patientWarningStatus = (statusByte >> 0) & 1;
+				sessionStatus.doorSensorStatus = (statusByte >> 1) & 1;
+				sessionStatus.smokeSensorStatus = (statusByte >> 2) & 1;
 
 				if (
 					sessionStatus.patientWarning == false &&
