@@ -39,6 +39,36 @@ let lastEmittedSessionProfile = null;
 // Cloud Reporter — initialized after config is loaded from DB
 let cloudReporter = null;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Speed profile table (single source of truth for descent/ascent/slope rates).
+// Overwritten at runtime by applyConfigToApp() from DB config.speedProfiles.
+const SPEED_PROFILES = {
+	1: { descentRate: 0.5,        ascentRate: 0.5, slope: 0.5 },
+	2: { descentRate: 0.66666666, ascentRate: 0.5, slope: 1   },
+	3: { descentRate: 1.0,        ascentRate: 1.0, slope: 3   },
+};
+
+function getSpeedProfile(speed) {
+	return SPEED_PROFILES[speed] || SPEED_PROFILES[1];
+}
+
+// scale: 10 when caller passes setDerinlik in bar (×10 → seconds);
+//        1  when caller already passes a pre-scaled depth value.
+function calcDiveDurations(setDerinlik, speed, scale = 10) {
+	const p = getSpeedProfile(speed);
+	return {
+		dalisSuresi: Math.round((setDerinlik * scale) / p.descentRate),
+		cikisSuresi: Math.round((setDerinlik * scale) / p.ascentRate),
+	};
+}
+
+function applyDiveDurations(setDerinlik, speed, scale = 10) {
+	const { dalisSuresi, cikisSuresi } = calcDiveDurations(setDerinlik, speed, scale);
+	sessionStatus.dalisSuresi = dalisSuresi;
+	sessionStatus.cikisSuresi = cikisSuresi;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function buildClientSessionStatus() {
 	return {
 		status: sessionStatus.status,
@@ -519,20 +549,7 @@ async function loadConfigFromDB() {
 		});
 
 		// DalisSuresi ve CikisSuresi hesapla (speed değerine göre)
-		let dalisSuresi = 0;
-		let cikisSuresi = 0;
-		if (sessionStatus.speed == 3) {
-			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-		} else if (sessionStatus.speed == 2) {
-			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
-			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-		} else if (sessionStatus.speed == 1) {
-			dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-			cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-		}
-		sessionStatus.dalisSuresi = dalisSuresi;
-		sessionStatus.cikisSuresi = cikisSuresi;
+		applyDiveDurations(sessionStatus.setDerinlik, sessionStatus.speed);
 
 		// Başlangıç grafiğini oluştur
 		createChart();
@@ -572,6 +589,22 @@ global.applyConfigToApp = function () {
 	sessionStatus.decomp_depth = c.decompDepth ?? sessionStatus.decomp_depth;
 	sessionStatus.minimumvalve = c.minimumValve ?? sessionStatus.minimumvalve;
 	sessionStatus.humidityAlarmLevel = c.humidityAlarmLevel ?? sessionStatus.humidityAlarmLevel;
+
+	// Speed profiles — overwrite in-place so existing references stay valid
+	let sp = c.speedProfiles;
+	if (typeof sp === 'string') {
+		try { sp = JSON.parse(sp); } catch (_) { sp = null; }
+	}
+	if (sp && typeof sp === 'object') {
+		for (const key of Object.keys(SPEED_PROFILES)) {
+			const incoming = sp[key];
+			if (incoming && typeof incoming === 'object') {
+				if (typeof incoming.descentRate === 'number') SPEED_PROFILES[key].descentRate = incoming.descentRate;
+				if (typeof incoming.ascentRate === 'number') SPEED_PROFILES[key].ascentRate = incoming.ascentRate;
+				if (typeof incoming.slope === 'number') SPEED_PROFILES[key].slope = incoming.slope;
+			}
+		}
+	}
 
 	// CloudReporter reconfigure
 	if (cloudReporter) {
@@ -675,22 +708,8 @@ async function init() {
 
 		dashSocket.on('sessionStart', (data) => {
 			const dt = data;
-			let dalisSuresi = 0;
-			let cikisSuresi = 0;
-			if (dt.dalisSuresi == 3) {
-				dalisSuresi = Math.round(dt.setDerinlik / 1);
-				cikisSuresi = Math.round(dt.setDerinlik / 1);
-			} else if (dt.dalisSuresi == 2) {
-				dalisSuresi = Math.round(dt.setDerinlik / 0.66666666);
-				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
-			} else if (dt.dalisSuresi == 1) {
-				dalisSuresi = Math.round(dt.setDerinlik / 0.5);
-				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
-			}
-
 			sessionStatus.speed = dt.dalisSuresi;
-			sessionStatus.dalisSuresi = dalisSuresi;
-			sessionStatus.cikisSuresi = cikisSuresi;
+			applyDiveDurations(dt.setDerinlik, dt.dalisSuresi, 1);
 			sessionStatus.toplamSure = dt.toplamSure;
 			sessionStatus.setDerinlik = dt.setDerinlik;
 			sessionStatus.status = 1;
@@ -1028,23 +1047,8 @@ async function init() {
 			} else if (dt.type == 'alarmClear') {
 				alarmClear();
 			} else if (dt.type == 'sessionStart') {
-				let dalisSuresi = 0;
-				let cikisSuresi = 0;
-
-				if (dt.data.dalisSuresi == 3) {
-					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 1);
-				} else if (dt.data.dalisSuresi == 2) {
-					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.66666666);
-					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.5);
-				} else if (dt.data.dalisSuresi == 1) {
-					dalisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.5);
-					cikisSuresi = Math.round((dt.data.setDerinlik * 10) / 0.5);
-				}
-
 				oxygenOpen();
-				sessionStatus.dalisSuresi = dalisSuresi;
-				sessionStatus.cikisSuresi = cikisSuresi;
+				applyDiveDurations(dt.data.setDerinlik, dt.data.dalisSuresi);
 				sessionStatus.toplamSure = dt.data.toplamSure;
 				sessionStatus.setDerinlik = dt.data.setDerinlik;
 				console.log(
@@ -1236,22 +1240,7 @@ async function init() {
 				console.log('duration', dt.data.duration);
 				sessionStatus.toplamSure = dt.data.duration;
 
-				let dalisSuresi = 0;
-				let cikisSuresi = 0;
-
-				if (sessionStatus.speed == 3) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-				} else if (sessionStatus.speed == 2) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (sessionStatus.speed == 1) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				}
-
-				sessionStatus.dalisSuresi = dalisSuresi;
-				sessionStatus.cikisSuresi = cikisSuresi;
+				applyDiveDurations(sessionStatus.setDerinlik, sessionStatus.speed);
 
 				if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessionStatus.speed == 2) {
 					treatmentSegments = [
@@ -1286,22 +1275,7 @@ async function init() {
 			} else if (dt.type == 'pressure') {
 				sessionStatus.setDerinlik = dt.data.pressure;
 
-				let dalisSuresi = 0;
-				let cikisSuresi = 0;
-
-				if (sessionStatus.speed == 3) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-				} else if (sessionStatus.speed == 2) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (sessionStatus.speed == 1) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				}
-
-				sessionStatus.dalisSuresi = dalisSuresi;
-				sessionStatus.cikisSuresi = cikisSuresi;
+				applyDiveDurations(sessionStatus.setDerinlik, sessionStatus.speed);
 if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessionStatus.speed == 2) {
 					treatmentSegments = [
 						[20, sessionStatus.setDerinlik, 'o'],
@@ -1334,24 +1308,7 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 			} else if (dt.type == 'speed') {
 				console.log('speed', dt.data.speed);
 				sessionStatus.speed = dt.data.speed;
-
-				let dalisSuresi = 0;
-				let cikisSuresi = 0;
-
-				if (dt.data.speed == 3) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 1);
-				} else if (dt.data.speed == 2) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.66666666);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				} else if (dt.data.speed == 1) {
-					dalisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-					cikisSuresi = Math.round((sessionStatus.setDerinlik * 10) / 0.5);
-				}
-
-				sessionStatus.dalisSuresi = dalisSuresi;
-				sessionStatus.cikisSuresi = cikisSuresi;
-				sessionStatus.speed = dt.data.speed;
+				applyDiveDurations(sessionStatus.setDerinlik, dt.data.speed);
 
 				if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessionStatus.speed == 2) {
 					treatmentSegments = [
@@ -1470,23 +1427,8 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 		socket.on('sessionStart', function (data) {
 			console.log('sessionStart', data);
 			const dt = JSON.parse(data);
-			let dalisSuresi = 0;
-			let cikisSuresi = 0;
-			if (dt.dalisSuresi == 3) {
-				dalisSuresi = Math.round(dt.setDerinlik / 1);
-				cikisSuresi = Math.round(dt.setDerinlik / 1);
-			} else if (dt.dalisSuresi == 2) {
-				dalisSuresi = Math.round(dt.setDerinlik / 0.66666666);
-				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
-			} else if (dt.dalisSuresi == 1) {
-				dalisSuresi = Math.round(dt.setDerinlik / 0.5);
-				cikisSuresi = Math.round(dt.setDerinlik / 0.5);
-			}
-
 			sessionStatus.speed = dt.dalisSuresi;
-
-			sessionStatus.dalisSuresi = dalisSuresi;
-			sessionStatus.cikisSuresi = cikisSuresi;
+			applyDiveDurations(dt.setDerinlik, dt.dalisSuresi, 1);
 			sessionStatus.toplamSure = dt.toplamSure;
 			sessionStatus.setDerinlik = dt.setDerinlik;
 			sessionStatus.status = 1;
@@ -2037,7 +1979,8 @@ function read() {
 		if (
 			sessionStatus.diffrencesayac > 10 &&
 			sessionStatus.otomanuel == 0 &&
-			sessionStatus.deviationAlarm == false
+			sessionStatus.deviationAlarm == false &&
+			sessionStatus.grafikdurum == 1
 		) {
 			alarmSet(
 				'deviation',
@@ -3254,9 +3197,7 @@ function sessionFinishToZero(startTimeOverride, currentPressureOverride) {
 	// Estimate per-second slope from the last 30 seconds
 	let slope = 0;
 
-	if (sessionStatus.speed == 1) slope = 0.5;
-	else if (sessionStatus.speed == 2) slope = 1;
-	else if (sessionStatus.speed == 3) slope = 3;
+	slope = getSpeedProfile(sessionStatus.speed).slope;
 
 	// Guard against zero/NaN: derive a reasonable fallback from current pressure
 

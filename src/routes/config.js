@@ -25,6 +25,11 @@ const defaultConfigValues = {
 	decompDepth: 100,
 	minimumValve: 12,
 	humidityAlarmLevel: 70,
+	speedProfiles: {
+		1: { descentRate: 0.5, ascentRate: 0.5, slope: 0.5 },
+		2: { descentRate: 0.66666666, ascentRate: 0.5, slope: 1 },
+		3: { descentRate: 1.0, ascentRate: 1.0, slope: 3 },
+	},
 	// Last Session
 	lastSessionDepth: 1.4,
 	lastSessionDuration: 60,

@@ -665,6 +665,27 @@ body::after {
       </div>
     </div>
 
+    <!-- 4b. Speed Profiles -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon coral">⏱</div>
+        <div class="card-title">Speed Profiles</div>
+      </div>
+      <div class="field-grid">
+        <div class="field"><label>Speed 1 — Descent</label><input type="number" step="0.0001" id="speed1Descent" placeholder="0.5"></div>
+        <div class="field"><label>Speed 1 — Ascent</label><input type="number" step="0.0001" id="speed1Ascent" placeholder="0.5"></div>
+        <div class="field"><label>Speed 1 — Slope</label><input type="number" step="0.01" id="speed1Slope" placeholder="0.5"></div>
+
+        <div class="field"><label>Speed 2 — Descent</label><input type="number" step="0.0001" id="speed2Descent" placeholder="0.6667"></div>
+        <div class="field"><label>Speed 2 — Ascent</label><input type="number" step="0.0001" id="speed2Ascent" placeholder="0.5"></div>
+        <div class="field"><label>Speed 2 — Slope</label><input type="number" step="0.01" id="speed2Slope" placeholder="1"></div>
+
+        <div class="field"><label>Speed 3 — Descent</label><input type="number" step="0.0001" id="speed3Descent" placeholder="1.0"></div>
+        <div class="field"><label>Speed 3 — Ascent</label><input type="number" step="0.0001" id="speed3Ascent" placeholder="1.0"></div>
+        <div class="field"><label>Speed 3 — Slope</label><input type="number" step="0.01" id="speed3Slope" placeholder="3"></div>
+      </div>
+    </div>
+
     <!-- 5. Default Session -->
     <div class="card">
       <div class="card-header">
@@ -898,6 +919,37 @@ const configFields = [
 const checkboxFields = ['o2AlarmOn', 'demoMode'];
 const rangeFields = ['filterAlphaPressure', 'filterAlphaO2', 'filterAlphaTemperature', 'filterAlphaHumidity'];
 
+const SPEED_PROFILE_KEYS = [1, 2, 3];
+const SPEED_PROFILE_AXES = ['Descent', 'Ascent', 'Slope'];
+
+function loadSpeedProfilesFromData(data) {
+  let sp = data.speedProfiles;
+  if (typeof sp === 'string') { try { sp = JSON.parse(sp); } catch (_) { sp = null; } }
+  if (!sp || typeof sp !== 'object') return;
+  SPEED_PROFILE_KEYS.forEach(k => {
+    const row = sp[k] || sp[String(k)] || {};
+    const map = { Descent: 'descentRate', Ascent: 'ascentRate', Slope: 'slope' };
+    SPEED_PROFILE_AXES.forEach(axis => {
+      const el = document.getElementById(`speed${k}${axis}`);
+      if (el && row[map[axis]] != null) el.value = row[map[axis]];
+    });
+  });
+}
+
+function collectSpeedProfilesFromForm() {
+  const out = {};
+  SPEED_PROFILE_KEYS.forEach(k => {
+    const map = { Descent: 'descentRate', Ascent: 'ascentRate', Slope: 'slope' };
+    const row = {};
+    SPEED_PROFILE_AXES.forEach(axis => {
+      const el = document.getElementById(`speed${k}${axis}`);
+      if (el && el.value !== '') row[map[axis]] = Number(el.value);
+    });
+    out[k] = row;
+  });
+  return out;
+}
+
 // ─── LOAD CONFIG ───
 async function loadConfig() {
   try {
@@ -926,6 +978,8 @@ async function loadConfig() {
       if (el) el.checked = !!data[f];
     });
 
+    loadSpeedProfilesFromData(data);
+
     toast('Config loaded');
   } catch (e) {
     toast('Failed to load config: ' + e.message, 'error');
@@ -951,6 +1005,8 @@ async function saveConfig() {
       const el = document.getElementById(f);
       if (el) body[f] = el.checked;
     });
+
+    body.speedProfiles = collectSpeedProfilesFromForm();
 
     const res = await fetch(API_BASE + '/config/updateConfig', {
       method: 'POST',

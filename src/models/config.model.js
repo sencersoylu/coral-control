@@ -23,6 +23,15 @@ module.exports = (sequelize, Sequelize) => {
 			decompDepth: { type: Sequelize.FLOAT, defaultValue: 100 },
 			minimumValve: { type: Sequelize.INTEGER, defaultValue: 12 },
 			humidityAlarmLevel: { type: Sequelize.INTEGER, defaultValue: 70 },
+			// Speed profiles: { "1": { descentRate, ascentRate, slope }, "2": {...}, "3": {...} }
+			speedProfiles: {
+				type: Sequelize.JSON,
+				defaultValue: {
+					1: { descentRate: 0.5, ascentRate: 0.5, slope: 0.5 },
+					2: { descentRate: 0.66666666, ascentRate: 0.5, slope: 1 },
+					3: { descentRate: 1.0, ascentRate: 1.0, slope: 3 },
+				},
+			},
 			// Last Session Settings
 			lastSessionDepth: { type: Sequelize.FLOAT, defaultValue: 1.4 },
 			lastSessionDuration: { type: Sequelize.INTEGER, defaultValue: 60 },

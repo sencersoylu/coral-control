@@ -97,6 +97,14 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			serverPort: { type: Sequelize.INTEGER, defaultValue: 4001 },
 			sensorUpdateInterval: { type: Sequelize.INTEGER, defaultValue: 10000 },
 			heartbeatInterval: { type: Sequelize.INTEGER, defaultValue: 30000 },
+			speedProfiles: {
+				type: Sequelize.JSON,
+				defaultValue: JSON.stringify({
+					1: { descentRate: 0.5, ascentRate: 0.5, slope: 0.5 },
+					2: { descentRate: 0.66666666, ascentRate: 0.5, slope: 1 },
+					3: { descentRate: 1.0, ascentRate: 1.0, slope: 3 },
+				}),
+			},
 		};
 
 		for (const [colName, colDef] of Object.entries(newConfigColumns)) {
