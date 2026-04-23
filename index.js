@@ -2478,6 +2478,11 @@ function read_demo() {
 			sessionStatus.wait == 0
 		) {
 			sessionStatus.p2counter = 0;
+			// Dekompresyona geçerken ventilasyonu durdur
+			if (sessionStatus.grafikdurum == 1 && sessionStatus.ventil != 0) {
+				console.log('Dekompresyon başladı → ventilasyon durduruluyor');
+				ventilationStop();
+			}
 		}
 
 		if (sessionStatus.profile[sessionStatus.zaman]) {
