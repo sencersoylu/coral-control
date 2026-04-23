@@ -1813,6 +1813,11 @@ function read() {
 				0
 			);
 
+			if (sessionStatus.ventil != 0) {
+				console.log('Dekompresyon başladı → ventilasyon durduruluyor');
+				ventilationStop();
+			}
+
 			sendCommand({
 				url: 'ws://192.168.77.100:8080/ws',
 				my: 'server-1',
