@@ -1709,6 +1709,7 @@ function read() {
 			o2Pressure: sensorData['o2_pressure'],
 			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
+			fanSpeed: sessionStatus.fanSpeed || 0,
 		});
 		socket.emit('patientData', {
 			p: sensorData['pressure'] || 0,
