@@ -295,6 +295,7 @@ let sessionStatus = {
 	pressure: 0,
 	patientWarning: false,
 	smokeAlarm: false,
+	fanSpeed: 0,
 
 	o2: 0,
 	bufferdifference: [],
@@ -1393,6 +1394,7 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 					sessionStatus.setDerinlik
 				);
 			} else if (dt.type == 'fanSpeed') {
+				sessionStatus.fanSpeed = dt.data.speed;
 				if (dt.data.speed == 1) {
 					console.log('fanSpeed 1');
 					socket.emit(
@@ -1717,6 +1719,7 @@ function read() {
 			total: sessionStatus.toplamSure || 0,
 			profile: sessionStatus.profile || [],
 			status: sessionStatus.status || 0,
+			fanSpeed: sessionStatus.fanSpeed || 0,
 		});
 	}
 
@@ -2803,6 +2806,7 @@ function read_demo() {
 			total: sessionStatus.toplamSure || 0,
 			profile: sessionStatus.profile || [],
 			status: sessionStatus.status || 0,
+			fanSpeed: sessionStatus.fanSpeed || 0,
 		});
 	}
 
