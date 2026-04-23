@@ -595,15 +595,31 @@ global.applyConfigToApp = function () {
 	if (typeof sp === 'string') {
 		try { sp = JSON.parse(sp); } catch (_) { sp = null; }
 	}
+	let speedProfilesChanged = false;
 	if (sp && typeof sp === 'object') {
 		for (const key of Object.keys(SPEED_PROFILES)) {
 			const incoming = sp[key];
 			if (incoming && typeof incoming === 'object') {
-				if (typeof incoming.descentRate === 'number') SPEED_PROFILES[key].descentRate = incoming.descentRate;
-				if (typeof incoming.ascentRate === 'number') SPEED_PROFILES[key].ascentRate = incoming.ascentRate;
-				if (typeof incoming.slope === 'number') SPEED_PROFILES[key].slope = incoming.slope;
+				if (typeof incoming.descentRate === 'number' && SPEED_PROFILES[key].descentRate !== incoming.descentRate) {
+					SPEED_PROFILES[key].descentRate = incoming.descentRate;
+					speedProfilesChanged = true;
+				}
+				if (typeof incoming.ascentRate === 'number' && SPEED_PROFILES[key].ascentRate !== incoming.ascentRate) {
+					SPEED_PROFILES[key].ascentRate = incoming.ascentRate;
+					speedProfilesChanged = true;
+				}
+				if (typeof incoming.slope === 'number' && SPEED_PROFILES[key].slope !== incoming.slope) {
+					SPEED_PROFILES[key].slope = incoming.slope;
+					speedProfilesChanged = true;
+				}
 			}
 		}
+	}
+	// Recompute live session durations if rates changed
+	if (speedProfilesChanged && sessionStatus.setDerinlik && sessionStatus.speed) {
+		applyDiveDurations(sessionStatus.setDerinlik, sessionStatus.speed);
+		console.log('[applyConfigToApp] Speed profiles changed → durations recomputed:',
+			sessionStatus.dalisSuresi, sessionStatus.cikisSuresi);
 	}
 
 	// CloudReporter reconfigure
