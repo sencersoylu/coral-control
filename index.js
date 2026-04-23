@@ -60,6 +60,7 @@ function buildClientSessionStatus() {
 		cikis: sessionStatus.cikis,
 		pressure: sessionStatus.pressure,
 		main_fsw: sessionStatus.main_fsw,
+		fanSpeed: sessionStatus.fanSpeed || 0,
 	};
 }
 
@@ -1709,7 +1710,6 @@ function read() {
 			o2Pressure: sensorData['o2_pressure'],
 			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
-			fanSpeed: sessionStatus.fanSpeed || 0,
 		});
 		socket.emit('patientData', {
 			p: sensorData['pressure'] || 0,
