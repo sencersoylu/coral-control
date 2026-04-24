@@ -2070,11 +2070,13 @@ function read() {
 						decompValve(0);
 					}
 				} else if (sessionStatus.grafikdurum == 2) {
-					// Düz
-					if (avgDifference > 0.1) {
+					// Düz — eşik o anki hedef basıncın %3'ü (fallback: setDerinlik)
+					const plateauTarget = sessionStatus.hedef || sessionStatus.setDerinlik || 1;
+					const plateauThreshold = plateauTarget * 0.03;
+					if (avgDifference > plateauThreshold) {
 						compValve(sessionStatus.pcontrol);
 						if (sessionStatus.ventil != 1) decompValve(0);
-					} else if (avgDifference < -1) {
+					} else if (avgDifference < -plateauThreshold) {
 						compValve(0);
 						decompValve(control);
 					} else {
