@@ -2070,11 +2070,18 @@ function read() {
 						decompValve(0);
 					}
 				} else if (sessionStatus.grafikdurum == 2) {
-					// Düz — asimetrik eşik: comp %1 (hedefe yaklaş), decomp %10 (overshoot'u önle)
+					// Düz — histerezis: hedefin %2 altında dolmaya başla, hedefe ulaşınca dur
 					const plateauTarget = sessionStatus.hedef || sessionStatus.setDerinlik || 1;
-					const compThreshold = plateauTarget * 0.01;
+					const compOpenThreshold = plateauTarget * 0.02;
 					const decompThreshold = plateauTarget * 0.10;
-					if (avgDifference > compThreshold) {
+
+					if (avgDifference > compOpenThreshold) {
+						sessionStatus.plateauCompActive = true;
+					} else if (avgDifference <= 0) {
+						sessionStatus.plateauCompActive = false;
+					}
+
+					if (sessionStatus.plateauCompActive) {
 						compValve(sessionStatus.pcontrol);
 						if (sessionStatus.ventil != 1) decompValve(0);
 					} else if (avgDifference < -decompThreshold) {
