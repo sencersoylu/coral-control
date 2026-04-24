@@ -501,6 +501,11 @@ async function loadConfigFromDB() {
 		// Store full config globally
 		global.appConfig = config.toJSON();
 
+		// Apply everything that lives in applyConfigToApp (including SPEED_PROFILES)
+		if (typeof global.applyConfigToApp === 'function') {
+			global.applyConfigToApp();
+		}
+
 		// Apply intervals from config
 		SENSOR_UPDATE_INTERVAL = global.appConfig.sensorUpdateInterval || 10000;
 
@@ -630,7 +635,7 @@ global.applyConfigToApp = function () {
 		cloudReporter.enabled = newEnabled;
 	}
 
-	console.log('[applyConfigToApp] Config applied live');
+	console.log('[applyConfigToApp] Config applied live. SPEED_PROFILES =', SPEED_PROFILES);
 };
 
 // Save last session settings to database
