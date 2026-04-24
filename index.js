@@ -2070,13 +2070,14 @@ function read() {
 						decompValve(0);
 					}
 				} else if (sessionStatus.grafikdurum == 2) {
-					// Düz — eşik o anki hedef basıncın %3'ü (fallback: setDerinlik)
+					// Düz — asimetrik eşik: comp %1 (hedefe yaklaş), decomp %10 (overshoot'u önle)
 					const plateauTarget = sessionStatus.hedef || sessionStatus.setDerinlik || 1;
-					const plateauThreshold = plateauTarget * 0.03;
-					if (avgDifference > plateauThreshold) {
+					const compThreshold = plateauTarget * 0.01;
+					const decompThreshold = plateauTarget * 0.10;
+					if (avgDifference > compThreshold) {
 						compValve(sessionStatus.pcontrol);
 						if (sessionStatus.ventil != 1) decompValve(0);
-					} else if (avgDifference < -plateauThreshold) {
+					} else if (avgDifference < -decompThreshold) {
 						compValve(0);
 						decompValve(control);
 					} else {
