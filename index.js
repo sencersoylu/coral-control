@@ -920,26 +920,12 @@ async function init() {
 				);
 
 				if (sensorCalibrationData['air_pressure']) {
-					sensorData['air_pressure'] = linearConversion(
-						sensorCalibrationData['air_pressure'].sensorLowerLimit,
-						sensorCalibrationData['air_pressure'].sensorUpperLimit,
-						sensorCalibrationData['air_pressure'].sensorAnalogLower,
-						sensorCalibrationData['air_pressure'].sensorAnalogUpper,
-						dataObject.data[7],
-						sensorCalibrationData['air_pressure'].sensorDecimal
-					);
+					sensorData['air_pressure'] = dataObject.data[7] / 10 || 0;
 					sessionStatus.airPressure = sensorData['air_pressure'];
 				}
 
 				if (sensorCalibrationData['o2_pressure']) {
-					sensorData['o2_pressure'] = linearConversion(
-						sensorCalibrationData['o2_pressure'].sensorLowerLimit,
-						sensorCalibrationData['o2_pressure'].sensorUpperLimit,
-						sensorCalibrationData['o2_pressure'].sensorAnalogLower,
-						sensorCalibrationData['o2_pressure'].sensorAnalogUpper,
-						dataObject.data[8],
-						sensorCalibrationData['o2_pressure'].sensorDecimal
-					);
+					sensorData['o2_pressure'] = dataObject.data[8] / 10 || 0;
 					sessionStatus.o2Pressure = sensorData['o2_pressure'];
 				}
 
