@@ -627,6 +627,20 @@ global.applyConfigToApp = function () {
 			sessionStatus.dalisSuresi, sessionStatus.cikisSuresi);
 	}
 
+	// O2 calibration sync from DB → in-memory
+	if (c.o2Point0Raw != null) o2CalibrationData.point0.raw = c.o2Point0Raw;
+	if (c.o2Point0Percentage != null) o2CalibrationData.point0.percentage = c.o2Point0Percentage;
+	if (c.o2Point21Raw != null) o2CalibrationData.point21.raw = c.o2Point21Raw;
+	if (c.o2Point21Percentage != null) o2CalibrationData.point21.percentage = c.o2Point21Percentage;
+	if (c.o2Point100Raw != null) o2CalibrationData.point100.raw = c.o2Point100Raw;
+	if (c.o2Point100Percentage != null) o2CalibrationData.point100.percentage = c.o2Point100Percentage;
+	if (c.o2AlarmValuePercentage != null) o2CalibrationData.o2AlarmValuePercentage = c.o2AlarmValuePercentage;
+	if (c.o2AlarmOn != null) o2CalibrationData.o2AlarmOn = !!c.o2AlarmOn;
+	if (c.o2CalibrationDate) {
+		o2CalibrationData.lastCalibrationDate = c.o2CalibrationDate;
+		o2CalibrationData.isCalibrated = true;
+	}
+
 	// CloudReporter reconfigure
 	if (cloudReporter) {
 		const newEnabled = !!(c.cloudApiUrl && c.chamberApiKey);
@@ -3604,24 +3618,50 @@ setSessionProfile(quickProfile.toTimeBasedArrayBySeconds());
 // O2 KALİBRASYON FONKSİYONLARI
 // ============================================================================
 
-function setO2CalibrationPoint(point, rawValue, actualPercentage) {
+async function setO2CalibrationPoint(point, rawValue, actualPercentage) {
 	o2CalibrationData.point0.raw = 0;
 	o2CalibrationData.point0.percentage = 0;
 
 	o2CalibrationData.point21.raw = rawValue;
 	o2CalibrationData.point21.percentage = 21;
 
-	o2CalibrationData.point100.raw = (rawValue / 21) * 100;
+	o2CalibrationData.point100.raw = Math.round((rawValue / 21) * 100);
 	o2CalibrationData.point100.percentage = 100;
+
+	const calibrationDate = new Date();
+	o2CalibrationData.lastCalibrationDate = calibrationDate;
+	o2CalibrationData.isCalibrated = true;
 
 	console.log(`O2 Kalibrasyon Noktası %${point} ayarlandı:`, {
 		raw: rawValue,
 		percentage: actualPercentage,
 	});
 
+	// Persist to DB (fire-and-forget — control loop must not block)
+	try {
+		const cfg = await db.config.findOne({ where: { id: 1 } });
+		if (cfg) {
+			await cfg.update({
+				o2Point0Raw: o2CalibrationData.point0.raw,
+				o2Point0Percentage: o2CalibrationData.point0.percentage,
+				o2Point21Raw: o2CalibrationData.point21.raw,
+				o2Point21Percentage: o2CalibrationData.point21.percentage,
+				o2Point100Raw: o2CalibrationData.point100.raw,
+				o2Point100Percentage: o2CalibrationData.point100.percentage,
+				o2CalibrationDate: calibrationDate,
+			});
+			global.appConfig = cfg.toJSON();
+		}
+	} catch (err) {
+		console.error('Failed to persist O2 calibration to DB:', err.message);
+	}
+
 	// Re-initialize the O2 sensor with updated calibration data
 	initializeO2Sensor();
 }
+
+global.o2CalibrationData = o2CalibrationData;
+global.setO2CalibrationPoint = setO2CalibrationPoint;
 
 // O2 sensor instance is now initialized at startup via initializeO2Sensor()
 
