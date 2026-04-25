@@ -4,11 +4,7 @@ const db = require('../models/index');
 const {
 	successResponse,
 	errorResponse,
-	authenticateJWT,
 } = require('../helpers/index');
-
-// Tüm O2 kalibrasyon endpoint'leri JWT korumalı
-router.use('/api/o2', authenticateJWT);
 
 // Yardımcı: config satırını getir / oluştur
 async function getOrCreateConfig() {
