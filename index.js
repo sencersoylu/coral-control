@@ -916,7 +916,7 @@ async function init() {
 				sensorData.o2RawValue = o2RawValue; // Ham değeri sakla
 
 				// O2 sensör arıza/yok tespiti: 30 sn boyunca 16383 → '---'
-				if (dataObject.data[2] === 16383) {
+				if (dataObject.data[2] > 16370) {
 					o2MaxStreak = (o2MaxStreak || 0) + 1;
 				} else {
 					o2MaxStreak = 0;
@@ -3001,7 +3001,7 @@ function compValve(angle) {
 	// 	val: send,
 	// });
 
-	var send = linearConversion(2500, 16380, 0, 90, angle, 0); //(32767/90derece)
+	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
 
 	socket.emit(
 		'writeRegister',
