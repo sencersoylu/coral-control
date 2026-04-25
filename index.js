@@ -260,6 +260,7 @@ const seedDatabase = require('./scripts/seed-db');
 const allRoutes = require('./src/routes');
 
 let sensorData = {};
+global.sensorData = sensorData;
 
 let currentCompValveAngle = 0;
 let currentDecompValveAngle = 0;
