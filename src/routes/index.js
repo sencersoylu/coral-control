@@ -14,6 +14,7 @@ router.use([
 	require('./sessions.js'),
 	require('./config.js'),
 	require('./update.js'),
+	require('./o2.js'),
 ]);
 
 // Test endpoint to create sample session profile

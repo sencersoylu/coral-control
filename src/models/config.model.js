@@ -44,6 +44,8 @@ module.exports = (sequelize, Sequelize) => {
 			o2Point100Raw: { type: Sequelize.INTEGER, defaultValue: 16383 },
 			o2Point100Percentage: { type: Sequelize.FLOAT, defaultValue: 100 },
 			o2CalibrationDate: Sequelize.DATE,
+			o2Point21LastCalibration: Sequelize.DATE,
+			o2Point100LastCalibration: Sequelize.DATE,
 			o2AlarmValuePercentage: { type: Sequelize.FLOAT, defaultValue: 23.5 },
 			o2AlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
 			// Filter Alpha

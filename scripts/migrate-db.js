@@ -97,6 +97,9 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			serverPort: { type: Sequelize.INTEGER, defaultValue: 4001 },
 			sensorUpdateInterval: { type: Sequelize.INTEGER, defaultValue: 10000 },
 			heartbeatInterval: { type: Sequelize.INTEGER, defaultValue: 30000 },
+			// Per-point O2 kalibrasyon tarihleri
+			o2Point21LastCalibration: { type: Sequelize.DATE, defaultValue: null },
+			o2Point100LastCalibration: { type: Sequelize.DATE, defaultValue: null },
 			speedProfiles: {
 				type: Sequelize.JSON,
 				defaultValue: JSON.stringify({
@@ -153,6 +156,39 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			} else if (sensorLogsTableDesc && sensorLogsTableDesc[colName]) {
 				console.log(`  ✓ ${colName} kolonu zaten mevcut`);
 			}
+		}
+
+		// ============================================
+		// O2_CALIBRATION_LOGS TABLOSU
+		// ============================================
+		console.log('\n🧪 O2CalibrationLogs tablosu kontrol ediliyor...');
+		const o2LogsTableName = db.o2CalibrationLogs.getTableName();
+		let o2LogsExists = true;
+		try {
+			await queryInterface.describeTable(o2LogsTableName);
+		} catch (e) {
+			o2LogsExists = false;
+		}
+		if (!o2LogsExists) {
+			console.log('  ➕ O2CalibrationLogs tablosu oluşturuluyor...');
+			await queryInterface.createTable(o2LogsTableName, {
+				id: {
+					type: Sequelize.INTEGER,
+					autoIncrement: true,
+					primaryKey: true,
+					allowNull: false,
+				},
+				type: { type: Sequelize.STRING, allowNull: false },
+				rawValue: { type: Sequelize.INTEGER, allowNull: true },
+				percentage: { type: Sequelize.FLOAT, allowNull: true },
+				performedBy: { type: Sequelize.INTEGER, allowNull: true },
+				note: { type: Sequelize.STRING, allowNull: true },
+				createdAt: { type: Sequelize.DATE, allowNull: false },
+				updatedAt: { type: Sequelize.DATE, allowNull: false },
+			});
+			console.log('  ✅ O2CalibrationLogs tablosu oluşturuldu');
+		} else {
+			console.log('  ✓ O2CalibrationLogs tablosu zaten mevcut');
 		}
 
 		// ============================================

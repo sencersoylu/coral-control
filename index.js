@@ -273,6 +273,8 @@ let o2CalibrationData = {
 	point100: { raw: 16383, percentage: 100 }, // %100 O2 için analog değer
 	isCalibrated: false,
 	lastCalibrationDate: null,
+	point21LastCalibration: null,
+	point100LastCalibration: null,
 	o2AlarmValuePercentage: 23.5,
 	o2AlarmOn: false,
 };
@@ -641,6 +643,9 @@ global.applyConfigToApp = function () {
 		o2CalibrationData.lastCalibrationDate = c.o2CalibrationDate;
 		o2CalibrationData.isCalibrated = true;
 	}
+	// Per-point kalibrasyon tarihleri
+	o2CalibrationData.point21LastCalibration = c.o2Point21LastCalibration || null;
+	o2CalibrationData.point100LastCalibration = c.o2Point100LastCalibration || null;
 
 	// CloudReporter reconfigure
 	if (cloudReporter) {
@@ -3648,6 +3653,13 @@ async function setO2CalibrationPoint(point, rawValue, actualPercentage) {
 	o2CalibrationData.lastCalibrationDate = calibrationDate;
 	o2CalibrationData.isCalibrated = true;
 
+	// Per-nokta kalibrasyon tarihini de güncelle
+	if (String(point) === '21') {
+		o2CalibrationData.point21LastCalibration = calibrationDate;
+	} else if (String(point) === '100') {
+		o2CalibrationData.point100LastCalibration = calibrationDate;
+	}
+
 	console.log(`O2 Kalibrasyon Noktası %${point} ayarlandı:`, {
 		raw: rawValue,
 		percentage: actualPercentage,
@@ -3657,7 +3669,7 @@ async function setO2CalibrationPoint(point, rawValue, actualPercentage) {
 	try {
 		const cfg = await db.config.findOne({ where: { id: 1 } });
 		if (cfg) {
-			await cfg.update({
+			const updates = {
 				o2Point0Raw: o2CalibrationData.point0.raw,
 				o2Point0Percentage: o2CalibrationData.point0.percentage,
 				o2Point21Raw: o2CalibrationData.point21.raw,
@@ -3665,7 +3677,10 @@ async function setO2CalibrationPoint(point, rawValue, actualPercentage) {
 				o2Point100Raw: o2CalibrationData.point100.raw,
 				o2Point100Percentage: o2CalibrationData.point100.percentage,
 				o2CalibrationDate: calibrationDate,
-			});
+			};
+			if (String(point) === '21') updates.o2Point21LastCalibration = calibrationDate;
+			if (String(point) === '100') updates.o2Point100LastCalibration = calibrationDate;
+			await cfg.update(updates);
 			global.appConfig = cfg.toJSON();
 		}
 	} catch (err) {

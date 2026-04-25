@@ -31,6 +31,10 @@ db.sessionSensorLogs = require('./sessionSensorLog.model.js')(
 	sequelize,
 	Sequelize
 );
+db.o2CalibrationLogs = require('./o2CalibrationLog.model.js')(
+	sequelize,
+	Sequelize
+);
 
 // Associations
 db.hyperbaricProfiles.hasMany(db.hyperbaricProfileSteps, {

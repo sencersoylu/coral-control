@@ -42,6 +42,8 @@ const defaultConfigValues = {
 	o2Point100Raw: 16383,
 	o2Point100Percentage: 100,
 	o2CalibrationDate: null,
+	o2Point21LastCalibration: null,
+	o2Point100LastCalibration: null,
 	o2AlarmValuePercentage: 23.5,
 	o2AlarmOn: false,
 	// Filter Alpha
