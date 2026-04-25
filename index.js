@@ -35,6 +35,7 @@ let currentLoggedInUserId = null; // Giriş yapmış kullanıcı ID'si
 let lastSensorUpdateTime = 0; // Son sensör güncelleme zamanı (timestamp)
 let SENSOR_UPDATE_INTERVAL = 10000; // Overridden by appConfig.sensorUpdateInterval
 let lastEmittedSessionProfile = null;
+let o2MaxStreak = 0; // 30 sn boyunca 16383 → sensör arızası/yok
 
 // Cloud Reporter — initialized after config is loaded from DB
 let cloudReporter = null;
@@ -913,8 +914,20 @@ async function init() {
 				// O2 sensörü için gerçek analog değeri oku (dataObject.data[2] varsayıyoruz)
 				const o2RawValue = dataObject.data[2] || 8000; // Eğer veri yoksa varsayılan değer
 				sensorData.o2RawValue = o2RawValue; // Ham değeri sakla
-				let o2Value = o2Sensor ? o2Sensor.calibrate(o2RawValue) : 0;
-				sensorData['o2'] = filters.o2.update(o2Value);
+
+				// O2 sensör arıza/yok tespiti: 30 sn boyunca 16383 → '---'
+				if (dataObject.data[2] === 16383) {
+					o2MaxStreak = (o2MaxStreak || 0) + 1;
+				} else {
+					o2MaxStreak = 0;
+				}
+
+				if (o2MaxStreak >= 30) {
+					sensorData['o2'] = '---';
+				} else {
+					let o2Value = o2Sensor ? o2Sensor.calibrate(o2RawValue) : 0;
+					sensorData['o2'] = filters.o2.update(o2Value);
+				}
 
 				sensorData['temperature'] = filters.temperature.update(
 					linearConversion(
@@ -2771,10 +2784,13 @@ function read_demo() {
 	}
 
 	if (socket) {
+		const o2Out = typeof sensorData['o2'] === 'number'
+			? Number(sensorData['o2'].toFixed(0)) || 0
+			: sensorData['o2']; // '---' arıza göstergesi
 		socket.emit('sensorData', {
 			pressure: Number(sensorData['pressure'].toFixed(2)) || 0,
 			anteChamberPressure: Number((sensorData['anteChamberPressure'] || 0).toFixed(2)) || 0,
-			o2: Number(sensorData['o2'].toFixed(0)) || 0,
+			o2: o2Out,
 			temperature: Number(sensorData['temperature'].toFixed(1)) || 0,
 			humidity: Number(sensorData['humidity'].toFixed(0)) || 0,
 			airPressure: Number((sensorData['air_pressure'] || 0).toFixed(1)) || 0,
@@ -2785,7 +2801,7 @@ function read_demo() {
 		socket.emit('patientData', {
 			p: Number(sensorData['pressure'].toFixed(2)) || 0,
 			t: Number(sensorData['temperature'].toFixed(1)) || 0,
-			o2: Number(sensorData['o2'].toFixed(0)) || 0,
+			o2: o2Out,
 			rh: Number(sensorData['humidity'].toFixed(0)) || 0,
 			elapsed: sessionStatus.zaman || 0,
 			total: sessionStatus.toplamSure || 0,
