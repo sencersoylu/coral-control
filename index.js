@@ -3001,7 +3001,7 @@ function compValve(angle) {
 	// 	val: send,
 	// });
 
-	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
+	var send = linearConversion(2500, 16380, 0, 90, angle, 0); //(32767/90derece)
 
 	socket.emit(
 		'writeRegister',
