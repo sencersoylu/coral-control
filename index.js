@@ -1276,6 +1276,14 @@ async function init() {
 				} else if (dt.data.direction == 'backward' && dt.data.engage == false) {
 					socket.emit('writeBit', { register: 'M0303', value: 0 });
 				}
+			} else if (dt.type == 'pttOn') {
+				socket.emit('writeBit', { register: 'M0305', value: 1 });
+			} else if (dt.type == 'pttOff') {
+				socket.emit('writeBit', { register: 'M0305', value: 0 });
+			} else if (dt.type == 'speakerOn') {
+				socket.emit('writeBit', { register: 'M0306', value: 1 });
+			} else if (dt.type == 'speakerOff') {
+				socket.emit('writeBit', { register: 'M0306', value: 0 });
 			} else if (dt.type == 'duration') {
 				console.log('duration', dt.data.duration);
 				sessionStatus.toplamSure = dt.data.duration;
