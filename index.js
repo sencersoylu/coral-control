@@ -975,7 +975,7 @@ async function init() {
 				}
 
 				sensorData['ffs_tank_pressure'] =
-					linearConversion(0, 16, 0, 16383, dataObject.data[12], 1) || 0;
+					linearConversion(0, 16, 3240, 16383, dataObject.data[12], 1) || 0;
 				sensorData['ffs_water_level'] =
 					linearConversion(0, 100, 0, 16383, dataObject.data[13], 0) || 0;
 
