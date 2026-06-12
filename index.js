@@ -2257,6 +2257,7 @@ function read() {
 			//doorOpen();
 			compValve(0);
 			decompValve(90);
+			auxValveClose();
 
 			// Cloud session end
 			if (sessionStatus.cloudSessionId) {
