@@ -2197,6 +2197,19 @@ function read() {
 			sessionStatus.eop,
 			sessionStatus.main_fsw
 		);
+		// Aux valve: çıkış fazında basınç son 0.10 bar'a inince bir kez aç
+		if (
+			sessionStatus.status == 1 &&
+			!sessionStatus.auxValveOpened &&
+			Array.isArray(sessionStatus.profile) &&
+			sessionStatus.zaman >=
+				sessionStatus.profile.length - sessionStatus.cikisSuresi * 60 &&
+			sessionStatus.pressure <= 0.1
+		) {
+			auxValveOpen();
+			sessionStatus.auxValveOpened = true;
+		}
+
 		// Seans sonu kontrolü
 		if (
 			(sessionStatus.zaman > sessionStatus.profile.length - 30 ||
