@@ -1290,6 +1290,10 @@ async function init() {
 				socket.emit('writeBit', { register: 'M0306', value: 1 });
 			} else if (dt.type == 'speakerOff') {
 				socket.emit('writeBit', { register: 'M0306', value: 0 });
+			} else if (dt.type == 'auxValveOpen') {
+				auxValveOpen();
+			} else if (dt.type == 'auxValveClose') {
+				auxValveClose();
 			} else if (dt.type == 'duration') {
 				console.log('duration', dt.data.duration);
 				sessionStatus.toplamSure = dt.data.duration;
