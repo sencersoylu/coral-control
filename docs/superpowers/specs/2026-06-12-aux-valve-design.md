@@ -10,11 +10,17 @@ Sistemdeki auxiliary valve, PLC üzerinde iki coil ile sürülüyor:
 - **M0250** = 1 → vana açılır
 - **M0251** = 1 → vana kapanır
 
+Ayrıca PLC, vananın fiziksel durumunu `data[18]` baytında geri bildirir:
+
+- **bit 4** = 1 → vana açık
+- **bit 5** = 1 → vana kapalı
+
 İstenen davranış:
 
 1. **Otomatik açma:** Seans sırasında, çıkış (dekompresyon) fazında basınç son 0.10 bar'a indiğinde M0250 otomatik tetiklenir.
 2. **Otomatik kapatma:** Seans bittiğinde M0251 tetiklenir, vana kapanır.
 3. **Manuel kontrol:** Mobil uygulamadan `chamberControl` üzerinden manuel aç/kapat yapılabilir.
+4. **Durum takibi:** `data[18]` bit 4/5 okunur, vana durumu `sessionStatus` ile uygulamaya yayınlanır.
 
 ## Kararlar (kullanıcı ile netleştirildi)
 
@@ -25,6 +31,7 @@ Sistemdeki auxiliary valve, PLC üzerinde iki coil ile sürülüyor:
 | Manuel kontrol | Evet, `auxValveOpen` / `auxValveClose` chamberControl tipleri eklenecek |
 | Eşik değeri | Kod içinde sabit (`0.10` bar), config'e taşınmayacak (YAGNI) |
 | Demo mod | Kapsam dışı — demo döngüsü PLC'ye yazmıyor |
+| Geri bildirim (data[18] bit 4/5) | Sadece durum takibi + yayın; tetik koşuluna veya alarma dahil edilmeyecek |
 
 ## Tasarım
 
@@ -99,7 +106,30 @@ dönüşü yakaladığı için tek kapatma noktası yeterlidir.
 Böylece her seans temiz kenarla başlar; önceki seanstan kalan coil değerleri
 sorun yaratmaz.
 
-### 5. Manuel kontrol (chamberControl)
+### 5. Vana durum geri bildirimi (data[18] bit 4/5)
+
+PLC veri işleyicisinde (`socket.on('data')`, ≈ `index.js:869`), mevcut
+`statusByte` (`data[10]`) kalıbının yanına:
+
+```js
+const auxValveByte = dataObject.data[18];
+sessionStatus.auxValveOpenStatus = (auxValveByte >> 4) & 1;   // 1 = vana açık
+sessionStatus.auxValveClosedStatus = (auxValveByte >> 5) & 1; // 1 = vana kapalı
+```
+
+Yayın: 1 saniyelik broadcast döngüsündeki `sessionStatus` payload'ına
+(≈ `index.js:1649`) iki alan eklenir:
+
+```js
+auxValveOpenStatus: sessionStatus.auxValveOpenStatus,
+auxValveClosedStatus: sessionStatus.auxValveClosedStatus,
+```
+
+Bu alanlar fiziksel durumu yansıtır; her PLC veri paketinde güncellenir,
+seans sonunda sıfırlanmaz. (`dashSocket` bağlantı anında zaten tüm
+`sessionStatus`'u gönderdiği için orada ek iş gerekmez.)
+
+### 6. Manuel kontrol (chamberControl)
 
 M0305/M0306 kalıbıyla, `chamberControl` handler zincirine (≈ `index.js:1279`):
 
@@ -131,6 +161,8 @@ Projede otomatik test altyapısı yok. Doğrulama manuel yapılır:
 4. Seans bitince (eop) M0251 = 1 yazıldığını doğrula.
 5. Manuel durdurma (sessionStop) senaryosunda da 3–4'ün çalıştığını doğrula.
 6. Uygulamadan `auxValveOpen`/`auxValveClose` komutlarının çalıştığını doğrula.
+7. Vana fiziksel olarak açılıp kapanırken `sessionStatus` yayınındaki
+   `auxValveOpenStatus`/`auxValveClosedStatus` alanlarının doğru değiştiğini doğrula.
 
 ## Açık nokta / gelecek iş
 
