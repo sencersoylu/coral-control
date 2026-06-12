@@ -2887,6 +2887,22 @@ function doorOpen() {
 	sessionStatus.doorStatus = 0;
 }
 
+function auxValveOpen() {
+	console.log('Aux valve opening');
+	socket.emit('writeBit', { register: 'M0250', value: 1 });
+}
+
+function auxValveClose() {
+	console.log('Aux valve closing');
+	socket.emit('writeBit', { register: 'M0251', value: 1 });
+}
+
+function auxValveSessionReset() {
+	socket.emit('writeBit', { register: 'M0250', value: 0 });
+	socket.emit('writeBit', { register: 'M0251', value: 0 });
+	sessionStatus.auxValveOpened = false;
+}
+
 function oxygenOpen() {
 	console.log('Oxygen Opening');
 	socket.emit('writeBit', { register: 'M0110', value: 1 });
