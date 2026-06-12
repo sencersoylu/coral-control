@@ -871,6 +871,10 @@ async function init() {
 				sessionStatus.doorSensorStatus = (statusByte >> 1) & 1;
 				sessionStatus.smokeSensorStatus = (statusByte >> 2) & 1;
 
+				const auxValveByte = dataObject.data[18];
+				sessionStatus.auxValveOpenStatus = (auxValveByte >> 4) & 1; // 1 = vana açık
+				sessionStatus.auxValveClosedStatus = (auxValveByte >> 5) & 1; // 1 = vana kapalı
+
 				if (
 					sessionStatus.patientWarning == false &&
 					sessionStatus.patientWarningStatus == 1
@@ -1679,6 +1683,8 @@ setInterval(() => {
 			bufferdifference: sessionStatus.bufferdifference[sessionStatus.zaman] || 0,
 			higho: sessionStatus.higho,
 			highHumidity: sessionStatus.highHumidity,
+			auxValveOpenStatus: sessionStatus.auxValveOpenStatus,
+			auxValveClosedStatus: sessionStatus.auxValveClosedStatus,
 		});
 		global.ioServer.emit('alarmStatus', alarmManager.getStatus());
 	}
