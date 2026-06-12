@@ -875,8 +875,8 @@ async function init() {
 				sessionStatus.smokeSensorStatus = (statusByte >> 2) & 1;
 
 				const auxValveByte = dataObject.data[18];
-				sessionStatus.auxValveOpenStatus = (auxValveByte >> 4) & 1; // 1 = vana açık
-				sessionStatus.auxValveClosedStatus = (auxValveByte >> 5) & 1; // 1 = vana kapalı
+				sessionStatus.auxValveClosedStatus = (auxValveByte >> 4) & 1; // 1 = vana kapalı
+				sessionStatus.auxValveOpenStatus = (auxValveByte >> 5) & 1; // 1 = vana açık
 
 				if (
 					sessionStatus.patientWarning == false &&
