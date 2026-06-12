@@ -757,6 +757,7 @@ async function init() {
 			sessionStatus.status = 1;
 			sessionStatus.zaman = 0;
 			sessionStatus.eop = 0;
+			auxValveSessionReset();
 			sessionStatus.cikis = 0;
 			sessionStatus.main_fsw = 0;
 			sessionStatus.pressure = 0;
@@ -1167,6 +1168,7 @@ async function init() {
 					sessionStatus.speed
 				);
 				sessionStartBit(1);
+				auxValveSessionReset();
 				sessionStatus.sessionStartTime = dayjs();
 
 				// Seans kaydını veritabanına oluştur
@@ -1484,6 +1486,7 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 			sessionStatus.toplamSure = dt.toplamSure;
 			sessionStatus.setDerinlik = dt.setDerinlik;
 			sessionStatus.status = 1;
+			auxValveSessionReset();
 
 			console.log(sessionStatus.dalisSuresi, sessionStatus.setDerinlik, 'air');
 
