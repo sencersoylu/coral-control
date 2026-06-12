@@ -974,6 +974,10 @@ async function init() {
 					sessionStatus.o2Pressure = sensorData['o2_pressure'];
 				}
 
+				sensorData['ffs_tank_pressure'] = dataObject.data[12] / 10 || 0;
+				sensorData['ffs_water_level'] =
+					linearConversion(0, 100, 0, 16383, dataObject.data[13], 0) || 0;
+
 				// Sensör verilerini 10 saniyede bir güncelle
 				const currentTime = Date.now();
 				if (currentTime - lastSensorUpdateTime >= SENSOR_UPDATE_INTERVAL) {
@@ -1642,6 +1646,8 @@ setInterval(() => {
 		sensorData['pressure'] = filters.pressure.update(0);
 		sensorData['air_pressure'] = 8.0;
 		sensorData['o2_pressure'] = 6.0;
+		sensorData['ffs_tank_pressure'] = 6.0;
+		sensorData['ffs_water_level'] = 80;
 		sessionStatus.airPressure = sensorData['air_pressure'];
 		sessionStatus.o2Pressure = sensorData['o2_pressure'];
 		read_demo();
@@ -1713,6 +1719,8 @@ function read() {
 			humidity: sensorData['humidity'],
 			airPressure: sensorData['air_pressure'],
 			o2Pressure: sensorData['o2_pressure'],
+			ffsTankPressure: sensorData['ffs_tank_pressure'],
+			ffsWaterLevel: sensorData['ffs_water_level'],
 			sessionStatus: buildClientSessionStatus(),
 			doorStatus: sessionStatus.doorStatus,
 		});
