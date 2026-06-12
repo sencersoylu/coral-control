@@ -92,6 +92,8 @@ function buildClientSessionStatus() {
 		pressure: sessionStatus.pressure,
 		main_fsw: sessionStatus.main_fsw,
 		fanSpeed: sessionStatus.fanSpeed || 0,
+		auxValveOpenStatus: sessionStatus.auxValveOpenStatus,
+		auxValveClosedStatus: sessionStatus.auxValveClosedStatus,
 	};
 }
 
