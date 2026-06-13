@@ -52,6 +52,23 @@ module.exports = (sequelize, Sequelize) => {
 				allowNull: true,
 				comment: 'Seansı başlatan kullanıcı ID',
 			},
+			// Olaylar [{type:'pause'|'resume'|'stop'|'complete', t:saniye, pressure:bar}]
+			events: {
+				type: Sequelize.TEXT,
+				allowNull: true,
+				get() {
+					const value = this.getDataValue('events');
+					if (!value || value === 'null') return [];
+					try {
+						return JSON.parse(value);
+					} catch {
+						return [];
+					}
+				},
+				set(value) {
+					this.setDataValue('events', JSON.stringify(value || []));
+				},
+			},
 		},
 		{
 			indexes: [

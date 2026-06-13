@@ -780,6 +780,39 @@ body::after {
       </div>
     </div>
 
+    <!-- Session Report (PDF + Resend) -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon coral">✉</div>
+        <div class="card-title">Session Report (E-mail)</div>
+      </div>
+      <div class="field-grid">
+        <div class="field full">
+          <label>Resend API Key</label>
+          <input type="text" id="resendApiKey" placeholder="re_xxxxxxxx">
+        </div>
+        <div class="field full">
+          <label>From E-mail (verified sender)</label>
+          <input type="text" id="reportFromEmail" placeholder="report@klinik.com">
+        </div>
+        <div class="field full">
+          <label>Default Recipient E-mail</label>
+          <input type="text" id="reportRecipientEmail" placeholder="doktor@klinik.com">
+        </div>
+        <div class="field full">
+          <label>Chromium Path (optional)</label>
+          <input type="text" id="chromiumPath" placeholder="/usr/bin/chromium-browser">
+        </div>
+        <!-- Auto-send report — şimdilik gizli; ileride açmak için style="display:none" kaldırın -->
+        <div class="field full" style="display:none">
+          <div class="check-field">
+            <input type="checkbox" id="autoSendReport">
+            <label for="autoSendReport">Auto-send report when session ends</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 8. PLC & System -->
     <div class="card">
       <div class="card-header">
@@ -915,8 +948,9 @@ const configFields = [
   'cloudApiUrl', 'chamberApiKey', 'signalingUrl', 'wsCommandUrl', 'serverId', 'targetId',
   'plcIpAddress', 'plcPort', 'compressionValveAnalog', 'decompressionValveAnalog',
   'jwtSecret', 'serverPort', 'sensorUpdateInterval', 'heartbeatInterval',
+  'resendApiKey', 'reportFromEmail', 'reportRecipientEmail', 'chromiumPath',
 ];
-const checkboxFields = ['o2AlarmOn', 'demoMode'];
+const checkboxFields = ['o2AlarmOn', 'demoMode', 'autoSendReport'];
 const rangeFields = ['filterAlphaPressure', 'filterAlphaO2', 'filterAlphaTemperature', 'filterAlphaHumidity'];
 
 const SPEED_PROFILE_KEYS = [1, 2, 3];

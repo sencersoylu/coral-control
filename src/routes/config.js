@@ -85,6 +85,12 @@ const defaultConfigValues = {
 	// Intervals (ms)
 	sensorUpdateInterval: 10000,
 	heartbeatInterval: 30000,
+	// Session Report (PDF + Resend e-posta)
+	resendApiKey: '',
+	reportFromEmail: '',
+	reportRecipientEmail: '',
+	autoSendReport: false,
+	chromiumPath: '',
 };
 
 // GET /config/getConfig

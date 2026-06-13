@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../models');
 const dayjs = require('dayjs');
+const { sendSessionReport, buildSessionReportPdf } = require('../reports');
 
 const router = express.Router();
 
@@ -169,6 +170,171 @@ router.get('/api/sessions/:id/logs', async (req, res) => {
 	} catch (error) {
 		console.error('Error fetching session logs:', error);
 		res.status(500).json({ error: error.message });
+	}
+});
+
+// ---------------------------------------------------------------------------
+// Mobil History ekranı uçları (hiper-flow). Mevcut /api/sessions uçlarından
+// bağımsız; response şekli stack-flow History kontratıyla aynı.
+// ---------------------------------------------------------------------------
+
+const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
+// DB status -> mobil status ('started'/'paused' devam eden seanstır)
+const mapStatus = (status) =>
+	status === 'started' || status === 'paused' ? 'running' : status;
+
+const toSummary = (record) => ({
+	id: record.id,
+	startTime: record.startedAt,
+	endTime: record.endedAt,
+	status: mapStatus(record.status),
+	targetPressure: record.targetDepth,
+	duration: record.totalDuration,
+	speed: record.speed,
+	startedBy: record.startedBy
+		? { id: record.startedBy.id, name: record.startedBy.name }
+		: null,
+});
+
+/**
+ * Özet liste — sensör logları response'a girmez.
+ * GET /api/session-history?limit&offset
+ */
+router.get('/api/session-history', async (req, res) => {
+	try {
+		const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+		const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
+		const rows = await db.sessionRecords.findAll({
+			order: [['startedAt', 'DESC']],
+			limit,
+			offset,
+			include: [
+				{
+					model: db.users,
+					as: 'startedBy',
+					attributes: ['id', 'name'],
+				},
+			],
+		});
+
+		const data = rows.map((record) => {
+			const events = record.events || [];
+			return {
+				...toSummary(record),
+				pauseCount: events.filter((e) => e.type === 'pause').length,
+			};
+		});
+
+		res.json({ success: true, data });
+	} catch (error) {
+		console.error('Error fetching session history:', error);
+		res.status(500).json({ success: false, errorMessage: error.message });
+	}
+});
+
+/**
+ * Detay — özet alanlar + olaylar + 10 sn'e seyreltilmiş örnekler.
+ * samples satırı: [t, hedefBar, basınçBar, sıcaklık, nem, o2]
+ * GET /api/session-history/:id
+ */
+router.get('/api/session-history/:id', async (req, res) => {
+	try {
+		const record = await db.sessionRecords.findByPk(req.params.id, {
+			include: [
+				{
+					model: db.users,
+					as: 'startedBy',
+					attributes: ['id', 'name'],
+				},
+			],
+		});
+
+		if (!record) {
+			return res
+				.status(404)
+				.json({ success: false, errorMessage: 'Seans kaydı bulunamadı' });
+		}
+
+		const logs = await db.sessionSensorLogs.findAll({
+			where: { sessionRecordId: record.id },
+			attributes: [
+				'sessionTime',
+				'targetPressure',
+				'pressure',
+				'temperature',
+				'humidity',
+				'o2',
+			],
+			order: [['sessionTime', 'ASC']],
+		});
+
+		// 1 Hz logları 10 sn'e seyrelt; son örnek her zaman dahil
+		const samples = [];
+		for (let i = 0; i < logs.length; i++) {
+			const log = logs[i];
+			if (log.sessionTime % 10 !== 0 && i !== logs.length - 1) continue;
+			samples.push([
+				log.sessionTime,
+				r2(log.targetPressure),
+				r2(log.pressure),
+				r2(log.temperature),
+				r2(log.humidity),
+				r2(log.o2),
+			]);
+		}
+
+		res.json({
+			success: true,
+			data: {
+				...toSummary(record),
+				events: record.events || [],
+				samples,
+			},
+		});
+	} catch (error) {
+		console.error('Error fetching session history detail:', error);
+		res.status(500).json({ success: false, errorMessage: error.message });
+	}
+});
+
+/**
+ * Seans raporunu PDF olarak indir (önizleme / manuel).
+ * GET /api/session-history/:id/report.pdf
+ */
+router.get('/api/session-history/:id/report.pdf', async (req, res) => {
+	try {
+		const result = await buildSessionReportPdf(req.params.id);
+		if (!result) {
+			return res
+				.status(404)
+				.json({ success: false, errorMessage: 'Seans kaydı bulunamadı' });
+		}
+		res.setHeader('Content-Type', 'application/pdf');
+		res.setHeader(
+			'Content-Disposition',
+			`inline; filename="seans-raporu-${req.params.id}.pdf"`
+		);
+		res.send(result.pdf);
+	} catch (error) {
+		console.error('Error building session report PDF:', error);
+		res.status(500).json({ success: false, errorMessage: error.message });
+	}
+});
+
+/**
+ * Seans raporunu Resend ile e-posta gönder.
+ * POST /api/session-history/:id/send-report  body: { email? }
+ */
+router.post('/api/session-history/:id/send-report', async (req, res) => {
+	try {
+		const { email } = req.body || {};
+		const result = await sendSessionReport(req.params.id, email);
+		res.json({ success: true, data: result });
+	} catch (error) {
+		console.error('Error sending session report:', error);
+		res.status(500).json({ success: false, errorMessage: error.message });
 	}
 });
 

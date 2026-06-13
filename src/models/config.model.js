@@ -87,6 +87,12 @@ module.exports = (sequelize, Sequelize) => {
 			// Intervals (ms)
 			sensorUpdateInterval: { type: Sequelize.INTEGER, defaultValue: 10000 },
 			heartbeatInterval: { type: Sequelize.INTEGER, defaultValue: 30000 },
+			// Session Report (PDF + Resend e-posta)
+			resendApiKey: { type: Sequelize.STRING, defaultValue: '' },
+			reportFromEmail: { type: Sequelize.STRING, defaultValue: '' },
+			reportRecipientEmail: { type: Sequelize.STRING, defaultValue: '' },
+			autoSendReport: { type: Sequelize.BOOLEAN, defaultValue: false },
+			chromiumPath: { type: Sequelize.STRING, defaultValue: '' },
 		},
 		{}
 	);

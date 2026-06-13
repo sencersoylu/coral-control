@@ -100,6 +100,12 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			// Per-point O2 kalibrasyon tarihleri
 			o2Point21LastCalibration: { type: Sequelize.DATE, defaultValue: null },
 			o2Point100LastCalibration: { type: Sequelize.DATE, defaultValue: null },
+			// Session Report (PDF + Resend e-posta)
+			resendApiKey: { type: Sequelize.STRING, defaultValue: '' },
+			reportFromEmail: { type: Sequelize.STRING, defaultValue: '' },
+			reportRecipientEmail: { type: Sequelize.STRING, defaultValue: '' },
+			autoSendReport: { type: Sequelize.BOOLEAN, defaultValue: false },
+			chromiumPath: { type: Sequelize.STRING, defaultValue: '' },
 			speedProfiles: {
 				type: Sequelize.JSON,
 				defaultValue: JSON.stringify({
@@ -156,6 +162,31 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			} else if (sensorLogsTableDesc && sensorLogsTableDesc[colName]) {
 				console.log(`  ✓ ${colName} kolonu zaten mevcut`);
 			}
+		}
+
+		// ============================================
+		// SESSION_RECORDS TABLOSU GÜNCELLEMELERİ
+		// ============================================
+		console.log('\n📼 SessionRecords tablosu kontrol ediliyor...');
+		const sessionRecordsTableName = db.sessionRecords.getTableName();
+		let sessionRecordsTableDesc;
+		try {
+			sessionRecordsTableDesc = await queryInterface.describeTable(sessionRecordsTableName);
+		} catch (e) {
+			console.log('  ⚠️  SessionRecords tablosu henüz oluşturulmamış');
+			sessionRecordsTableDesc = {};
+		}
+
+		if (sessionRecordsTableDesc && Object.keys(sessionRecordsTableDesc).length > 0 && !sessionRecordsTableDesc.events) {
+			console.log('  ➕ events kolonu ekleniyor...');
+			await queryInterface.addColumn(sessionRecordsTableName, 'events', {
+				type: Sequelize.TEXT,
+				allowNull: true,
+				defaultValue: null,
+			});
+			console.log('  ✅ events kolonu eklendi');
+		} else if (sessionRecordsTableDesc.events) {
+			console.log('  ✓ events kolonu zaten mevcut');
 		}
 
 		// ============================================
