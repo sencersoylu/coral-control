@@ -696,6 +696,7 @@ async function init() {
 	// ***********************************************************
 	await loadSensorCalibrationData();
 	await loadConfigFromDB();
+	await closeInterruptedSessions();
 	initializeO2Sensor();
 
 	// Server port from config
@@ -790,6 +791,8 @@ async function init() {
 			sessionStatus.otomanuel = 1;
 			sessionStatus.pauseTime = sessionStatus.zaman;
 			sessionStatus.pauseDepth = sensorData['pressure'];
+			addSessionEvent('pause');
+			setSessionRecordStatus('paused');
 		});
 
 		dashSocket.on('sessionResume', () => {
@@ -965,12 +968,28 @@ async function init() {
 				);
 
 				if (sensorCalibrationData['air_pressure']) {
-					sensorData['air_pressure'] = dataObject.data[7] / 10 || 0;
+					// 4-20mA → 0-16 bar: ham analog (3224-16383) DB kalibrasyonu ile dönüştür
+					sensorData['air_pressure'] = linearConversion(
+						sensorCalibrationData['air_pressure'].sensorLowerLimit,
+						sensorCalibrationData['air_pressure'].sensorUpperLimit,
+						sensorCalibrationData['air_pressure'].sensorAnalogLower,
+						sensorCalibrationData['air_pressure'].sensorAnalogUpper,
+						dataObject.data[7],
+						sensorCalibrationData['air_pressure'].sensorDecimal
+					) || 0;
 					sessionStatus.airPressure = sensorData['air_pressure'];
 				}
 
 				if (sensorCalibrationData['o2_pressure']) {
-					sensorData['o2_pressure'] = dataObject.data[8] / 10 || 0;
+					// 4-20mA → 0-16 bar: ham analog (3224-16383) DB kalibrasyonu ile dönüştür
+					sensorData['o2_pressure'] = linearConversion(
+						sensorCalibrationData['o2_pressure'].sensorLowerLimit,
+						sensorCalibrationData['o2_pressure'].sensorUpperLimit,
+						sensorCalibrationData['o2_pressure'].sensorAnalogLower,
+						sensorCalibrationData['o2_pressure'].sensorAnalogUpper,
+						dataObject.data[8],
+						sensorCalibrationData['o2_pressure'].sensorDecimal
+					) || 0;
 					sessionStatus.o2Pressure = sensorData['o2_pressure'];
 				}
 
@@ -978,6 +997,18 @@ async function init() {
 					linearConversion(0, 16, 3240, 16383, dataObject.data[12], 1) || 0;
 				sensorData['ffs_water_level'] =
 					linearConversion(0, 100, 0, 16383, dataObject.data[13], 0) || 0;
+
+				// FFS uyarıları: veri gerçekten geldiyse eşik kontrolü yap.
+				// Alarm kullanıcı temizleyene kadar ekranda kalır; temizlendikten
+				// sonra koşul sürüyorsa 10 dk cooldown bitince tekrar uyarır.
+				if (dataObject.data.length > 13) {
+					if (sensorData['ffs_tank_pressure'] < 5) {
+						alarmSet('lowFfsTankPressure', 'FFS tank pressure below 5 bar', 0);
+					}
+					if (sensorData['ffs_water_level'] < 60) {
+						alarmSet('lowFfsWaterLevel', 'FFS water level below 60%', 0);
+					}
+				}
 
 				// Sensör verilerini 10 saniyede bir güncelle
 				const currentTime = Date.now();
@@ -1194,6 +1225,8 @@ async function init() {
 				sessionStatus.otomanuel = 1;
 				sessionStatus.pauseTime = sessionStatus.zaman;
 				sessionStatus.pauseDepth = sensorData['pressure'];
+				addSessionEvent('pause');
+				setSessionRecordStatus('paused');
 				compValve(0);
 				decompValve(35);
 				compValve(0);
@@ -1528,6 +1561,8 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 			sessionStatus.otomanuel = 1;
 			sessionStatus.pauseTime = sessionStatus.zaman;
 			sessionStatus.pauseDepth = sensorData['pressure'];
+			addSessionEvent('pause');
+			setSessionRecordStatus('paused');
 		});
 
 		socket.on('sessionResume', function (data) {
@@ -2069,6 +2104,8 @@ function read() {
 			sessionStatus.otomanuel = 1;
 			sessionStatus.pauseTime = sessionStatus.zaman;
 			sessionStatus.pauseDepth = sensorData['pressure'];
+			addSessionEvent('pause', { reason: 'deviation' });
+			setSessionRecordStatus('paused');
 			compValve(0);
 			decompValve(35);
 			compValve(0);
@@ -2261,6 +2298,8 @@ function read() {
 			}, 30000);
 
 			alarmSet('endOfSession', 'Session Finished.', 0);
+			addSessionEvent('complete');
+			completeSessionRecord('completed');
 			sendCommand({
 				url: 'ws://192.168.77.100:8080/ws',
 				my: 'server-1',
@@ -2710,6 +2749,8 @@ function read_demo() {
 			) {
 				sessionStatus.eop = 1;
 				alarmSet('endOfSession', 'Session Finished.', 0);
+				addSessionEvent('complete');
+				completeSessionRecord('completed');
 				sessionStartBit(0);
 				//doorOpen();
 				oxygenClose();
@@ -3162,6 +3203,9 @@ function sessionResume(
 	initialPressure,
 	stepDuration
 ) {
+	addSessionEvent('resume');
+	setSessionRecordStatus('started');
+
 	// Calculate elapsed pause time
 	const pauseDuration = pauseEndTime - pauseStartTime;
 
@@ -3413,6 +3457,7 @@ function sessionStop() {
 	}
 
 	// Seans kaydını tamamla
+	addSessionEvent('stop');
 	completeSessionRecord('stopped');
 }
 
@@ -3958,6 +4003,7 @@ async function completeSessionRecord(status = 'completed') {
 		return;
 	}
 
+	const completedId = currentSessionRecordId;
 	try {
 		await db.sessionRecords.update(
 			{
@@ -3972,6 +4018,89 @@ async function completeSessionRecord(status = 'completed') {
 		currentSessionRecordId = null;
 	} catch (error) {
 		console.error('Error completing session record:', error);
+	}
+
+	// Otomatik rapor gönderimi (fire-and-forget) — kontrol döngüsünü bloklamaz
+	maybeAutoSendReport(completedId);
+}
+
+/**
+ * Config'te autoSendReport açıksa seans raporunu Resend ile gönderir.
+ * Hata yutulur; rapor gönderimi seans akışını etkilemez.
+ */
+function maybeAutoSendReport(sessionId) {
+	if (!sessionId) return;
+	const cfg = global.appConfig || {};
+	if (!cfg.autoSendReport) return;
+	if (!cfg.resendApiKey || !cfg.reportFromEmail || !cfg.reportRecipientEmail) {
+		console.warn('[report] autoSendReport açık ama Resend/e-posta ayarları eksik, atlanıyor');
+		return;
+	}
+	// PDF üretimi birkaç saniye sürebilir; tamamen asenkron çalıştır
+	setImmediate(async () => {
+		try {
+			const { sendSessionReport } = require('./src/reports');
+			const result = await sendSessionReport(sessionId);
+			console.log('[report] Seans raporu gönderildi:', result.to, 'emailId:', result.emailId);
+		} catch (error) {
+			console.error('[report] Otomatik rapor gönderilemedi:', error.message);
+		}
+	});
+}
+
+/**
+ * Aktif seansa olay ekler (pause/resume/stop/complete).
+ * Hata kontrol döngüsüne fırlatılmaz.
+ * @param {string} type - Olay tipi
+ * @param {Object} extra - Ek alanlar (örn. { reason: 'deviation' })
+ */
+async function addSessionEvent(type, extra = {}) {
+	const recordId = currentSessionRecordId;
+	if (!recordId) return;
+	try {
+		const record = await db.sessionRecords.findByPk(recordId);
+		if (!record) return;
+		const events = record.events || [];
+		events.push({
+			type,
+			t: sessionStatus.zaman || 0,
+			pressure: Number((sensorData['pressure'] || 0).toFixed(2)),
+			...extra,
+		});
+		await db.sessionRecords.update({ events }, { where: { id: recordId } });
+	} catch (error) {
+		console.error('Error adding session event:', error);
+	}
+}
+
+/**
+ * Aktif seans kaydının durumunu günceller (paused/started)
+ */
+async function setSessionRecordStatus(status) {
+	const recordId = currentSessionRecordId;
+	if (!recordId) return;
+	try {
+		await db.sessionRecords.update({ status }, { where: { id: recordId } });
+	} catch (error) {
+		console.error('Error updating session record status:', error);
+	}
+}
+
+/**
+ * Açılışta yarım kalan seans kayıtlarını kapatır
+ * (elektrik kesintisi / sunucu restart)
+ */
+async function closeInterruptedSessions() {
+	try {
+		const [n] = await db.sessionRecords.update(
+			{ status: 'interrupted', endedAt: new Date() },
+			{ where: { endedAt: null } }
+		);
+		if (n > 0) {
+			console.log(`[history] ${n} yarım kalmış seans 'interrupted' olarak kapatıldı`);
+		}
+	} catch (error) {
+		console.error('Error closing interrupted sessions:', error);
 	}
 }
 

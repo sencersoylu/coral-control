@@ -11,6 +11,8 @@ class AlarmManager {
 			highO2: 10 * 60 * 1000,
 			highHumidity: 10 * 60 * 1000,
 			doorIsOpen: 30 * 1000,
+			lowFfsTankPressure: 10 * 60 * 1000,
+			lowFfsWaterLevel: 10 * 60 * 1000,
 		};
 	}
 
