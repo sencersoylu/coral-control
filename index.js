@@ -304,6 +304,7 @@ let sessionStatus = {
 	hedeflenen: [],
 	cikis: 0,
 	grafikdurum: 0,
+	platoDrainTriggered: false, // İlk platoda drain 10sn açıldı mı
 	adim: 0,
 	adimzaman: [],
 	maxadim: [],
@@ -848,6 +849,7 @@ async function init() {
 				//doorOpen();
 				compValve(0);
 				decompValve(0);
+				drainOff(); // Program her başladığında/bağlandığında drain vanası kapalı
 				sessionStartBit(0);
 				oxygenClose();
 
@@ -1871,6 +1873,29 @@ function read() {
 		} else {
 			// If at end of profile, maintain current state or set to descent
 			sessionStatus.grafikdurum = 0; // Default to descent when at end
+		}
+
+		// Seans yeni başladıysa (ilk saniyeler) plato-drain bayrağını sıfırla
+		if (sessionStatus.status == 1 && sessionStatus.zaman <= 1) {
+			sessionStatus.platoDrainTriggered = false;
+		}
+
+		// Hedef basınca ilk ulaşıldığında (ilk plato) drain vanasını 10sn aç.
+		// grafikdurum 2 = düz/plato; hedef basınç > 0 olmalı (başlangıç 0-platosu değil).
+		if (
+			sessionStatus.status == 1 &&
+			sessionStatus.grafikdurum == 2 &&
+			!sessionStatus.platoDrainTriggered &&
+			sessionStatus.profile[sessionStatus.zaman] &&
+			sessionStatus.profile[sessionStatus.zaman][1] > 0
+		) {
+			sessionStatus.platoDrainTriggered = true;
+			console.log('İlk platoya ulaşıldı — drain 10sn açılıyor');
+			drainOn();
+			setTimeout(() => {
+				drainOff();
+				console.log('Plato drain kapatıldı (10sn doldu)');
+			}, 10000);
 		}
 
 		if (
