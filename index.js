@@ -850,6 +850,7 @@ async function init() {
 				compValve(0);
 				decompValve(0);
 				drainOff(); // Program her başladığında/bağlandığında drain vanası kapalı
+				auxValveClose(); // Aux valve kapalı pozisyonda olsun
 				sessionStartBit(0);
 				oxygenClose();
 
@@ -1876,8 +1877,10 @@ function read() {
 		}
 
 		// Seans yeni başladıysa (ilk saniyeler) plato-drain bayrağını sıfırla
+		// ve aux valve'in kapalı pozisyonda olduğundan emin ol
 		if (sessionStatus.status == 1 && sessionStatus.zaman <= 1) {
 			sessionStatus.platoDrainTriggered = false;
+			if (!sessionStatus.auxValveOpened) auxValveClose();
 		}
 
 		// Hedef basınca ilk ulaşıldığında (ilk plato) drain vanasını 10sn aç.
