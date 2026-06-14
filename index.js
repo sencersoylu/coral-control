@@ -94,6 +94,12 @@ function buildClientSessionStatus() {
 		fanSpeed: sessionStatus.fanSpeed || 0,
 		auxValveOpenStatus: sessionStatus.auxValveOpenStatus,
 		auxValveClosedStatus: sessionStatus.auxValveClosedStatus,
+		chiller: {
+			currentTemp: chillerStatus.currentTemp,
+			setTemp: chillerStatus.setTemp,
+			running: chillerStatus.running,
+			commError: chillerStatus.commError,
+		},
 	};
 }
 
@@ -295,6 +301,23 @@ app.use(
 );
 app.use(allRoutes);
 app.use(express.static('public'));
+
+// Chiller (su soğutucu) donanım durumu — seanstan bağımsız, port-4000 bridge
+// üzerinden FATEK PLC'den okunur. data[15]/10=anlık °C, data[27]==10=haberleşme
+// hatası, data[28]/10=hedef °C, data[29] bit0=çalışıyor.
+let chillerStatus = {
+	currentTemp: 0,
+	setTemp: 0,
+	running: false,
+	commError: false,
+};
+
+// Program ilk başladığında chiller'i bir kez otomatik ON yap. Tek seferlik:
+// sonraki yeniden bağlanmalarda manuel STOP'u ezmemek için flag ile korunur.
+// Pending: ON talebi var ama chiller haberleşmesi henüz oturmadı (commError);
+// gerçek ON komutu, telemetri sağlıklı gelince (commError=false) gönderilir.
+let chillerAutoStarted = false;
+let chillerAutoStartPending = false;
 
 let sessionStatus = {
 	status: 0, // 0: session durumu yok, 1: session başlatıldı, 2: session duraklatıldı, 3: session durduruldu
@@ -854,6 +877,12 @@ async function init() {
 				sessionStartBit(0);
 				oxygenClose();
 
+				// Program ilk açıldığında chiller'i otomatik ON yapmayı talep et (tek sefer).
+				// Gerçek ON komutu, chiller haberleşmesi oturunca data döngüsünde gönderilir.
+				if (!chillerAutoStarted) {
+					chillerAutoStartPending = true;
+				}
+
 				if (liveBitInterval) clearInterval(liveBitInterval);
 				liveBitInterval = setInterval(() => {
 					liveBit();
@@ -883,6 +912,27 @@ async function init() {
 				const auxValveByte = dataObject.data[18];
 				sessionStatus.auxValveClosedStatus = (auxValveByte >> 4) & 1; // 1 = vana kapalı
 				sessionStatus.auxValveOpenStatus = (auxValveByte >> 5) & 1; // 1 = vana açık
+
+				// Chiller (su soğutucu) durumu — MY_APP ile aynı register haritası
+				if (dataObject.data.length > 29) {
+					chillerStatus.currentTemp = Number(dataObject.data[15]) / 10;
+					chillerStatus.commError = Number(dataObject.data[27]) === 10;
+					if (!chillerStatus.commError) {
+						const d28 = Number(dataObject.data[28]);
+						const d29 = Number(dataObject.data[29]);
+						if (Number.isFinite(d28)) chillerStatus.setTemp = d28 / 10;
+						if (Number.isFinite(d29)) chillerStatus.running = (d29 & 1) === 1;
+					}
+
+					// İlk başlangıç otomatik ON: chiller haberleşmesi oturana
+					// (commError=false) kadar bekle, oturunca bir kez ON gönder.
+					if (chillerAutoStartPending && !chillerStatus.commError) {
+						chillerAutoStartPending = false;
+						chillerAutoStarted = true;
+						chillerRun(true);
+						console.log('Chiller: haberleşme oturdu, otomatik ON gönderildi');
+					}
+				}
 
 				if (
 					sessionStatus.patientWarning == false &&
@@ -1337,6 +1387,10 @@ async function init() {
 				auxValveOpen();
 			} else if (dt.type == 'auxValveClose') {
 				auxValveClose();
+			} else if (dt.type == 'chillerSetTemp') {
+				chillerSetTargetTemp(dt.value);
+			} else if (dt.type == 'chillerRun') {
+				chillerRun(dt.value);
 			} else if (dt.type == 'duration') {
 				console.log('duration', dt.data.duration);
 				sessionStatus.toplamSure = dt.data.duration;
@@ -1739,6 +1793,12 @@ setInterval(() => {
 			highHumidity: sessionStatus.highHumidity,
 			auxValveOpenStatus: sessionStatus.auxValveOpenStatus,
 			auxValveClosedStatus: sessionStatus.auxValveClosedStatus,
+			chiller: {
+				currentTemp: chillerStatus.currentTemp,
+				setTemp: chillerStatus.setTemp,
+				running: chillerStatus.running,
+				commError: chillerStatus.commError,
+			},
 		});
 		global.ioServer.emit('alarmStatus', alarmManager.getStatus());
 	}
@@ -3008,6 +3068,24 @@ function auxValveSessionReset() {
 	socket.emit('writeBit', { register: 'M0250', value: 0 });
 	socket.emit('writeBit', { register: 'M0251', value: 0 });
 	sessionStatus.auxValveOpened = false;
+}
+
+// Chiller manuel kontrol — FATEK D-register'larına writeRegister (MY_APP ile aynı).
+// D00202: hedef sıcaklık (0.1 °C birim, yani °C × 10), D00208: çalıştır (1=Run, 0=Stop).
+function chillerSetTargetTemp(temp) {
+	const clamped = Math.max(5, Math.min(35, Number(temp)));
+	if (!Number.isFinite(clamped)) return;
+	const value = Math.round(clamped * 10);
+	console.log('Chiller set temp ->', clamped, '°C (D00202 =', value, ')');
+	if (socket) socket.emit('writeRegister', { register: 'D00202', value });
+	chillerStatus.setTemp = clamped; // optimistik; PLC geri bildirimi data[28] ile teyit eder
+}
+
+function chillerRun(run) {
+	const on = run === 1 || run === true;
+	console.log('Chiller run ->', on ? 'RUN' : 'STOP', '(D00208 =', on ? 1 : 0, ')');
+	if (socket) socket.emit('writeRegister', { register: 'D00208', value: on ? 1 : 0 });
+	chillerStatus.running = on; // optimistik; data[29] bit0 ile teyit edilir
 }
 
 function oxygenOpen() {
