@@ -303,8 +303,9 @@ app.use(allRoutes);
 app.use(express.static('public'));
 
 // Chiller (su soğutucu) donanım durumu — seanstan bağımsız, port-4000 bridge
-// üzerinden FATEK PLC'den okunur. data[15]/10=anlık °C, data[27]==10=haberleşme
-// hatası, data[28]/10=hedef °C, data[29] bit0=çalışıyor.
+// üzerinden PLC'den okunur. PLC payload'ında data[20..22]:
+//   data[20]/10 = anlık su sıcaklığı, data[21]/10 = hedef sıcaklık,
+//   data[22] = durum (10=haberleşme hatası, aksi halde bit0=çalışıyor).
 let chillerStatus = {
 	currentTemp: 0,
 	setTemp: 0,
@@ -312,10 +313,9 @@ let chillerStatus = {
 	commError: false,
 };
 
-// Program ilk başladığında chiller'i bir kez otomatik ON yap. Tek seferlik:
-// sonraki yeniden bağlanmalarda manuel STOP'u ezmemek için flag ile korunur.
-// Pending: ON talebi var ama chiller haberleşmesi henüz oturmadı (commError);
-// gerçek ON komutu, telemetri sağlıklı gelince (commError=false) gönderilir.
+// Program ilk başladığında chiller'i bir kez otomatik ON yap. Tek seferlik;
+// yeniden bağlanmalarda manuel STOP'u ezmez. Gerçek ON komutu, chiller
+// haberleşmesi oturunca (commError=false) data döngüsünde gönderilir.
 let chillerAutoStarted = false;
 let chillerAutoStartPending = false;
 
@@ -877,8 +877,8 @@ async function init() {
 				sessionStartBit(0);
 				oxygenClose();
 
-				// Program ilk açıldığında chiller'i otomatik ON yapmayı talep et (tek sefer).
-				// Gerçek ON komutu, chiller haberleşmesi oturunca data döngüsünde gönderilir.
+				// Program ilk açıldığında chiller'i otomatik ON yapmayı talep et (tek sefer);
+				// gerçek ON komutu chiller haberleşmesi oturunca data döngüsünde gönderilir.
 				if (!chillerAutoStarted) {
 					chillerAutoStartPending = true;
 				}
@@ -913,15 +913,19 @@ async function init() {
 				sessionStatus.auxValveClosedStatus = (auxValveByte >> 4) & 1; // 1 = vana kapalı
 				sessionStatus.auxValveOpenStatus = (auxValveByte >> 5) & 1; // 1 = vana açık
 
-				// Chiller (su soğutucu) durumu — MY_APP ile aynı register haritası
-				if (dataObject.data.length > 29) {
-					chillerStatus.currentTemp = Number(dataObject.data[15]) / 10;
-					chillerStatus.commError = Number(dataObject.data[27]) === 10;
+				// Chiller (su soğutucu) durumu — PLC payload'ında data[20..22]
+				//   data[20] = anlık su sıcaklığı (×10)
+				//   data[21] = hedef sıcaklık / set (×10)
+				//   data[22] = durum: 10 = haberleşme hatası (cihaz kapalı/erişilemez),
+				//              aksi halde bit0 = çalışıyor
+				if (dataObject.data.length > 22) {
+					chillerStatus.currentTemp = Number(dataObject.data[20]) / 10;
+					const chStatus = Number(dataObject.data[22]);
+					chillerStatus.commError = chStatus === 10;
 					if (!chillerStatus.commError) {
-						const d28 = Number(dataObject.data[28]);
-						const d29 = Number(dataObject.data[29]);
-						if (Number.isFinite(d28)) chillerStatus.setTemp = d28 / 10;
-						if (Number.isFinite(d29)) chillerStatus.running = (d29 & 1) === 1;
+						const sv = Number(dataObject.data[21]);
+						if (Number.isFinite(sv)) chillerStatus.setTemp = sv / 10;
+						chillerStatus.running = (chStatus & 1) === 1;
 					}
 
 					// İlk başlangıç otomatik ON: chiller haberleşmesi oturana
