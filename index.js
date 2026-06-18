@@ -303,9 +303,10 @@ app.use(allRoutes);
 app.use(express.static('public'));
 
 // Chiller (su soğutucu) donanım durumu — seanstan bağımsız, port-4000 bridge
-// üzerinden PLC'den okunur. PLC payload'ında data[20..22]:
+// üzerinden PLC'den okunur. PLC payload'ında data[20..23]:
 //   data[20]/10 = anlık su sıcaklığı, data[21]/10 = hedef sıcaklık,
-//   data[22] = durum (10=haberleşme hatası, aksi halde bit0=çalışıyor).
+//   data[22] = haberleşme durumu (10=haberleşme hatası),
+//   data[23] bit0 = çalışıyor (PLC, chiller run-status'unu buraya yazar).
 let chillerStatus = {
 	currentTemp: 0,
 	setTemp: 0,
@@ -913,19 +914,19 @@ async function init() {
 				sessionStatus.auxValveClosedStatus = (auxValveByte >> 4) & 1; // 1 = vana kapalı
 				sessionStatus.auxValveOpenStatus = (auxValveByte >> 5) & 1; // 1 = vana açık
 
-				// Chiller (su soğutucu) durumu — PLC payload'ında data[20..22]
+				// Chiller (su soğutucu) durumu — PLC payload'ında data[20..23]
 				//   data[20] = anlık su sıcaklığı (×10)
 				//   data[21] = hedef sıcaklık / set (×10)
-				//   data[22] = durum: 10 = haberleşme hatası (cihaz kapalı/erişilemez),
-				//              aksi halde bit0 = çalışıyor
-				if (dataObject.data.length > 22) {
+				//   data[22] = haberleşme durumu: 10 = haberleşme hatası (cihaz kapalı/erişilemez)
+				//   data[23] bit0 = çalışıyor (PLC chiller run-status'unu buraya yazar)
+				if (dataObject.data.length > 23) {
 					chillerStatus.currentTemp = Number(dataObject.data[20]) / 10;
 					const chStatus = Number(dataObject.data[22]);
 					chillerStatus.commError = chStatus === 10;
 					if (!chillerStatus.commError) {
 						const sv = Number(dataObject.data[21]);
 						if (Number.isFinite(sv)) chillerStatus.setTemp = sv / 10;
-						chillerStatus.running = (chStatus & 1) === 1;
+						chillerStatus.running = (Number(dataObject.data[23]) & 1) === 1;
 					}
 
 					// İlk başlangıç otomatik ON: chiller haberleşmesi oturana
@@ -3082,14 +3083,14 @@ function chillerSetTargetTemp(temp) {
 	const value = Math.round(clamped * 10);
 	console.log('Chiller set temp ->', clamped, '°C (D00202 =', value, ')');
 	if (socket) socket.emit('writeRegister', { register: 'D00202', value });
-	chillerStatus.setTemp = clamped; // optimistik; PLC geri bildirimi data[28] ile teyit eder
+	chillerStatus.setTemp = clamped; // optimistik; PLC geri bildirimi data[21] ile teyit eder
 }
 
 function chillerRun(run) {
 	const on = run === 1 || run === true;
 	console.log('Chiller run ->', on ? 'RUN' : 'STOP', '(D00208 =', on ? 1 : 0, ')');
 	if (socket) socket.emit('writeRegister', { register: 'D00208', value: on ? 1 : 0 });
-	chillerStatus.running = on; // optimistik; data[29] bit0 ile teyit edilir
+	chillerStatus.running = on; // optimistik; data[23] bit0 ile teyit edilir
 }
 
 function oxygenOpen() {
