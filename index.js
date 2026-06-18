@@ -314,6 +314,13 @@ let chillerStatus = {
 	commError: false,
 };
 
+// RUN/STOP komutu gönderildikten sonra PLC'nin yeni durumu data[23]'e yansıtması
+// ~birkaç saniye sürüyor. Bu pencere boyunca optimistik `running` değerini koru;
+// aksi halde eski telemetri optimistik değeri ezip Start/Stop butonunda flicker
+// (aç-kapa-aç) yaratıyor. Pencere bitince telemetriye güvenilir.
+let chillerRunCmdAt = 0;
+const CHILLER_RUN_GRACE_MS = 6000;
+
 // Program ilk başladığında chiller'i bir kez otomatik ON yap. Tek seferlik;
 // yeniden bağlanmalarda manuel STOP'u ezmez. Gerçek ON komutu, chiller
 // haberleşmesi oturunca (commError=false) data döngüsünde gönderilir.
@@ -926,7 +933,11 @@ async function init() {
 					if (!chillerStatus.commError) {
 						const sv = Number(dataObject.data[21]);
 						if (Number.isFinite(sv)) chillerStatus.setTemp = sv / 10;
-						chillerStatus.running = (Number(dataObject.data[23]) & 1) === 1;
+						// Komut sonrası grace penceresi dışındaysak telemetriye güven;
+						// içindeysek optimistik değeri koru (PLC yansıtma gecikmesi).
+						if (Date.now() - chillerRunCmdAt > CHILLER_RUN_GRACE_MS) {
+							chillerStatus.running = (Number(dataObject.data[23]) & 1) === 1;
+						}
 					}
 
 					// İlk başlangıç otomatik ON: chiller haberleşmesi oturana
@@ -3091,6 +3102,7 @@ function chillerRun(run) {
 	console.log('Chiller run ->', on ? 'RUN' : 'STOP', '(D00208 =', on ? 1 : 0, ')');
 	if (socket) socket.emit('writeRegister', { register: 'D00208', value: on ? 1 : 0 });
 	chillerStatus.running = on; // optimistik; data[23] bit0 ile teyit edilir
+	chillerRunCmdAt = Date.now(); // grace penceresini başlat (telemetri gecikmesi)
 }
 
 function oxygenOpen() {
