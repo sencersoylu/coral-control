@@ -109,6 +109,8 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			// FFS alarm enable bayrakları — seçimli, default kapalı
 			ffsTankPressureAlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
 			ffsWaterLevelAlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
+			// O2 simülasyon: açıkken gerçek sensör yerine 21–23% rastgele değer
+			o2SimulationEnabled: { type: Sequelize.BOOLEAN, defaultValue: false },
 			speedProfiles: {
 				type: Sequelize.JSON,
 				defaultValue: JSON.stringify({
