@@ -1031,12 +1031,10 @@ async function init() {
 					sensorData['o2'] = filters.o2.update(o2Value);
 				}
 
-				// O2 simülasyon: SADECE aktif seans YOKKEN (idle/durduruldu) gerçek/arıza
-				// değerini ezip 21–23% rastgele üretir. Aktif seans sırasında (status 1
-				// başlatıldı / 2 duraklatıldı, hasta içeride) gerçek O2 korunur.
-				const seansAktif =
-					sessionStatus.status === 1 || sessionStatus.status === 2;
-				if (global.o2SimulationEnabled && !seansAktif) {
+				// O2 simülasyon: açıkken HER DURUMDA (seans olsun olmasın) gerçek/arıza
+				// değerini ezip 21–23% rastgele üretir. Açıkken gerçek sensör değeri
+				// hiç kullanılmaz / karıştırılmaz.
+				if (global.o2SimulationEnabled) {
 					sensorData['o2'] = Math.round((21 + Math.random() * 2) * 10) / 10;
 				}
 
