@@ -106,6 +106,9 @@ async function migrateDatabase({ closeConnection = true } = {}) {
 			reportRecipientEmail: { type: Sequelize.STRING, defaultValue: '' },
 			autoSendReport: { type: Sequelize.BOOLEAN, defaultValue: false },
 			chromiumPath: { type: Sequelize.STRING, defaultValue: '' },
+			// FFS alarm enable bayrakları — seçimli, default kapalı
+			ffsTankPressureAlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
+			ffsWaterLevelAlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
 			speedProfiles: {
 				type: Sequelize.JSON,
 				defaultValue: JSON.stringify({

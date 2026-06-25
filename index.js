@@ -70,6 +70,12 @@ function applyDiveDurations(setDerinlik, speed, scale = 10) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Last LED the app applied (mirrored from chamberControl 'ledColor'); broadcast so the other
+// tablet's LED swatch/toggle stays in sync. coral only stores + broadcasts — the PLC register
+// write still comes from the acting tablet. null = NOT YET KNOWN: stays null (and is broadcast as
+// null) until a tablet actually sends a color, so a coral restart can't clobber a lit lamp.
+let ledState = null;
+
 function buildClientSessionStatus() {
 	return {
 		status: sessionStatus.status,
@@ -92,6 +98,8 @@ function buildClientSessionStatus() {
 		pressure: sessionStatus.pressure,
 		main_fsw: sessionStatus.main_fsw,
 		fanSpeed: sessionStatus.fanSpeed || 0,
+		ventil: sessionStatus.ventil || 0,
+		led: ledState,   // null until a tablet sets a color (don't clobber a lit lamp on restart)
 		auxValveOpenStatus: sessionStatus.auxValveOpenStatus,
 		auxValveClosedStatus: sessionStatus.auxValveClosedStatus,
 		chiller: {
@@ -400,6 +408,8 @@ let sessionStatus = {
 	speed: 1,
 	highHumidity: false,
 	humidityAlarmLevel: 70,
+	ffsTankPressureAlarmOn: false,
+	ffsWaterLevelAlarmOn: false,
 	deviationAlarm: false,
 	pressRateFswPerMin: 0,
 	pressRateBarPerMin: 0,
@@ -573,6 +583,8 @@ async function loadConfigFromDB() {
 		sessionStatus.decomp_depth = config.decompDepth ?? 100;
 		sessionStatus.minimumvalve = config.minimumValve ?? 12;
 		sessionStatus.humidityAlarmLevel = config.humidityAlarmLevel ?? 70;
+		sessionStatus.ffsTankPressureAlarmOn = config.ffsTankPressureAlarmOn ?? false;
+		sessionStatus.ffsWaterLevelAlarmOn = config.ffsWaterLevelAlarmOn ?? false;
 
 		// Son seans ayarlarını sessionStatus'a ata
 		sessionStatus.setDerinlik = config.lastSessionDepth ?? 1.4;
@@ -617,6 +629,9 @@ global.applyConfigToApp = function () {
 	// Demo mode
 	demoMode = c.demoMode ? 1 : 0;
 
+	// O2 simülasyon (açıkken gerçek sensör yerine 21–23% rastgele)
+	global.o2SimulationEnabled = !!c.o2SimulationEnabled;
+
 	// Filter alphas
 	if (c.filterAlphaPressure != null) filters.pressure.setAlpha(c.filterAlphaPressure);
 	if (c.filterAlphaO2 != null) filters.o2.setAlpha(c.filterAlphaO2);
@@ -632,6 +647,8 @@ global.applyConfigToApp = function () {
 	sessionStatus.decomp_depth = c.decompDepth ?? sessionStatus.decomp_depth;
 	sessionStatus.minimumvalve = c.minimumValve ?? sessionStatus.minimumvalve;
 	sessionStatus.humidityAlarmLevel = c.humidityAlarmLevel ?? sessionStatus.humidityAlarmLevel;
+	sessionStatus.ffsTankPressureAlarmOn = c.ffsTankPressureAlarmOn ?? sessionStatus.ffsTankPressureAlarmOn;
+	sessionStatus.ffsWaterLevelAlarmOn = c.ffsWaterLevelAlarmOn ?? sessionStatus.ffsWaterLevelAlarmOn;
 
 	// Speed profiles — overwrite in-place so existing references stay valid
 	let sp = c.speedProfiles;
@@ -1014,6 +1031,11 @@ async function init() {
 					sensorData['o2'] = filters.o2.update(o2Value);
 				}
 
+				// O2 simülasyon açıksa gerçek/arıza değerini ezip 21–23% rastgele üret
+				if (global.o2SimulationEnabled) {
+					sensorData['o2'] = Math.round((21 + Math.random() * 2) * 10) / 10;
+				}
+
 				sensorData['temperature'] = filters.temperature.update(
 					linearConversion(
 						sensorCalibrationData['temperature'].sensorLowerLimit,
@@ -1071,10 +1093,11 @@ async function init() {
 				// Alarm kullanıcı temizleyene kadar ekranda kalır; temizlendikten
 				// sonra koşul sürüyorsa 10 dk cooldown bitince tekrar uyarır.
 				if (dataObject.data.length > 13) {
-					if (sensorData['ffs_tank_pressure'] < 5) {
+					// FFS alarmları seçimli — yalnız config'te açıksa tetikle (default kapalı)
+					if (sessionStatus.ffsTankPressureAlarmOn && sensorData['ffs_tank_pressure'] < 5) {
 						alarmSet('lowFfsTankPressure', 'FFS tank pressure below 5 bar', 0);
 					}
-					if (sensorData['ffs_water_level'] < 60) {
+					if (sessionStatus.ffsWaterLevelAlarmOn && sensorData['ffs_water_level'] < 60) {
 						alarmSet('lowFfsWaterLevel', 'FFS water level below 60%', 0);
 					}
 				}
@@ -1198,6 +1221,13 @@ async function init() {
 				}
 			} else if (dt.type == 'alarmClear') {
 				alarmClear();
+			} else if (dt.type == 'alarmAck') {
+				// Operator reset the alarm on one tablet → dismiss on BOTH (remove + cooldown) AND reset
+				// the condition latch so a persistent hazard (smoke / patient warning) re-raises next tick.
+				const ackType = dt.data && dt.data.type ? dt.data.type : '';
+				alarmManager.acknowledge(ackType);
+				resetAlarmLatches(ackType);
+				alarmStatus = alarmManager.getStatus();
 			} else if (dt.type == 'sessionStart') {
 				oxygenOpen();
 				applyDiveDurations(dt.data.setDerinlik, dt.data.dalisSuresi);
@@ -1551,6 +1581,18 @@ if (sessionStatus.toplamSure == 80 && sessionStatus.setDerinlik == 0.5 && sessio
 						JSON.stringify({ register: 'R01700', value: 0 })
 					);
 				}
+			} else if (dt.type == 'ledColor') {
+				// App sends { type:'ledColor', data:{ color:[r,g,b], on, brightness } } — RAW chosen rgb,
+				// not the gamma-corrected register. Store + broadcast only; the PLC register write comes
+				// from the acting tablet.
+				const d = dt.data || {};
+				if (!ledState) ledState = { color: [0, 0, 0], on: false, brightness: 100 };
+				if (Array.isArray(d.color) && d.color.length === 3) {
+					ledState.color = d.color.map((n) => Number(n) || 0);
+					ledState.on = d.color.some((n) => Number(n) > 0);
+				}
+				if (typeof d.on === 'boolean') ledState.on = d.on;
+				if (typeof d.brightness === 'number') ledState.brightness = d.brightness;
 			} else if (dt.type == 'ventilationStart') {
 				// Ventilasyon başlat
 				const mode = dt.data?.mode || 1;
@@ -2276,26 +2318,35 @@ function read() {
 						decompValve(0);
 					}
 				} else if (sessionStatus.grafikdurum == 2) {
-					// Düz — histerezis: hedefin %2 altında dolmaya başla, hedefe ulaşınca dur
-					const plateauTarget = sessionStatus.hedef || sessionStatus.setDerinlik || 1;
-					const compOpenThreshold = plateauTarget * 0.02;
-					const decompThreshold = plateauTarget * 0.10;
+					// Duz (plato) — GAP'li histerezis: hedefin biraz USTUNE kadar AGRESIF basincla,
+					// sonra birak (dogal dussun); hedefin altina dusunce tekrar basla.
+					// Set 0.5 bar -> ~0.51-0.52 bandinda tutar. (tunable sabitler asagida)
+					const OVERSHOOT_BAR = 0.01;   // hedefin bu kadar ustune kadar doldur (0.50 -> 0.51; lag ile ~0.52)
+					const FILL_MIN = 28;          // agresif/sert dolum valfi alt siniri
+					const FILL_MAX = 45;          // valf ust siniri (hasta konforu + asim kontrolu)
 
-					if (avgDifference > compOpenThreshold) {
-						sessionStatus.plateauCompActive = true;
-					} else if (avgDifference <= 0) {
-						sessionStatus.plateauCompActive = false;
+					const plateauTarget = sessionStatus.hedef || sessionStatus.setDerinlik || 1; // fsw
+					const overshootFsw = OVERSHOOT_BAR * 33.4;
+					const decompThreshold = plateauTarget * 0.10;  // guvenlik: cok asarsa aktif decomp
+
+					// avgDifference = hedef - gercek (fsw): >0 hedefin altinda, <0 ustunde
+					if (avgDifference > 0) {
+						sessionStatus.plateauCompActive = true;     // hedefin altina dustu -> doldur
+					} else if (avgDifference <= -overshootFsw) {
+						sessionStatus.plateauCompActive = false;    // hedef + ~0.01 bar'a ulasti -> birak
 					}
 
 					if (sessionStatus.plateauCompActive) {
-						compValve(sessionStatus.pcontrol);
+						// agresif/sert basincla; ust sinir histerezisle korunur
+						const fillValve = Math.min(FILL_MAX, Math.max(sessionStatus.pcontrol + 12, FILL_MIN));
+						compValve(fillValve);
 						if (sessionStatus.ventil != 1) decompValve(0);
 					} else if (avgDifference < -decompThreshold) {
 						compValve(0);
-						decompValve(control);
+						decompValve(control);                       // cok asti -> aktif birak (guvenlik)
 					} else {
 						compValve(0);
-						decompValve(0);
+						decompValve(0);                             // birak, dogal olarak dussun
 					}
 				} else {
 					// İniş
@@ -3044,13 +3095,20 @@ function alarmSet(type, text, duration) {
 	alarmStatus = alarmManager.getStatus();
 }
 
+// Reset the per-condition latches (sessionStatus.*) for cleared/acked alarms so a STILL-PRESENT
+// hazard re-raises on the next tick instead of being permanently silenced. No type = reset all.
+function resetAlarmLatches(type) {
+	if (!type || type === 'patientWarning') sessionStatus.patientWarning = false;
+	if (!type || type === 'smokeDetector') sessionStatus.smokeAlarm = false;
+}
+
 function alarmClear(type) {
 	if (type) {
 		alarmManager.clear(type);
 	} else {
 		alarmManager.clearAll();
 	}
-	sessionStatus.patientWarning = false;
+	resetAlarmLatches(type);
 	alarmStatus = alarmManager.getStatus();
 }
 
@@ -3233,7 +3291,8 @@ function compValve(angle) {
 	// 	val: send,
 	// });
 
-	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
+	// Kapalı (0°) analog tabanı config'ten (compressionValveAnalog); tam açık (90°) = 16383.
+	var send = linearConversion(global.appConfig?.compressionValveAnalog ?? 2500, 16383, 0, 90, angle, 0);
 
 	socket.emit(
 		'writeRegister',
@@ -3256,7 +3315,8 @@ function compValve02(angle) {
 	// 	val: send,
 	// });
 
-	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
+	// Kapalı (0°) analog tabanı config'ten (compressionValveAnalog); tam açık (90°) = 16383.
+	var send = linearConversion(global.appConfig?.compressionValveAnalog ?? 2500, 16383, 0, 90, angle, 0);
 
 	socket.emit(
 		'writeRegister',
@@ -3288,7 +3348,8 @@ function decompValve(angle) {
 	// 	val: send,
 	// });
 
-	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
+	// Kapalı (0°) analog tabanı config'ten (decompressionValveAnalog); tam açık (90°) = 16383.
+	var send = linearConversion(global.appConfig?.decompressionValveAnalog ?? 2500, 16383, 0, 90, angle, 0);
 
 	socket.emit(
 		'writeRegister',
@@ -3312,7 +3373,8 @@ function decompValve02(angle) {
 	// 	val: send,
 	// });
 
-	var send = linearConversion(2500, 16383, 0, 90, angle, 0); //(32767/90derece)
+	// Kapalı (0°) analog tabanı config'ten (decompressionValveAnalog); tam açık (90°) = 16383.
+	var send = linearConversion(global.appConfig?.decompressionValveAnalog ?? 2500, 16383, 0, 90, angle, 0);
 
 	socket.emit(
 		'writeRegister',
@@ -3543,14 +3605,14 @@ function sessionStop() {
 	decompValve(0);
 	sessionFinishToZero();
 
-	// Adjust total duration (in minutes) to match the truncated profile
-	if (Array.isArray(sessionStatus.profile)) {
-		const totalSeconds = sessionStatus.profile.length;
-		const totalMinutes = Math.round(totalSeconds / 60);
-		sessionStatus.toplamSure = Number.isFinite(totalMinutes)
-			? totalMinutes
-			: sessionStatus.toplamSure;
-	}
+	// NOT: toplamSure kullanicinin AYARI'dir (orn. 60 dk) ve stop'ta kisaltilmis
+	// profile gore EZILMEZ. Kisaltilmis gercek seans uzunlugu zaten
+	// sessionStatus.profile icinde kodlu; seans-sonu tespiti de profile.length'i
+	// kullanir (toplamSure'u degil). Eskiden burada toplamSure profile.length'e
+	// ezilince, seans IDLE'a donunce tablete yayinlanan bu deger Session Settings
+	// duration'ini bozuyordu (60 -> 48 gibi). DB record (totalDuration) ve kalici
+	// config (lastSessionDuration) sessionStart'ta dogru degerle yazildigi icin
+	// burada toplamSure'u guncellemeye gerek yok.
 
 	sessionStatus.oksijen = 0;
 	sessionStatus.oksijenBaslangicZamani = 0;

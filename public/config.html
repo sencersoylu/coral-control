@@ -586,6 +586,12 @@ body::after {
             <label for="o2AlarmOn">O2 Alarm Active</label>
           </div>
         </div>
+        <div class="field full">
+          <div class="check-field">
+            <input type="checkbox" id="o2SimulationEnabled" onchange="toggleO2Simulation(this.checked)">
+            <label for="o2SimulationEnabled">O2 Simülasyon (21–23%)</label>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -950,7 +956,7 @@ const configFields = [
   'jwtSecret', 'serverPort', 'sensorUpdateInterval', 'heartbeatInterval',
   'resendApiKey', 'reportFromEmail', 'reportRecipientEmail', 'chromiumPath',
 ];
-const checkboxFields = ['o2AlarmOn', 'demoMode', 'autoSendReport'];
+const checkboxFields = ['o2AlarmOn', 'demoMode', 'autoSendReport', 'o2SimulationEnabled'];
 const rangeFields = ['filterAlphaPressure', 'filterAlphaO2', 'filterAlphaTemperature', 'filterAlphaHumidity'];
 
 const SPEED_PROFILE_KEYS = [1, 2, 3];
@@ -1055,6 +1061,25 @@ async function saveConfig() {
     }
   } catch (e) {
     toast('Save error: ' + e.message, 'error');
+  }
+}
+
+// ─── O2 SIMULATION (anlık aç/kapa, kaydetmeye gerek yok) ───
+async function toggleO2Simulation(enabled) {
+  try {
+    const res = await fetch(API_BASE + '/config/updateConfigField', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field: 'o2SimulationEnabled', value: enabled }),
+    });
+    const json = await res.json();
+    if (json.success) {
+      toast('O2 simülasyon ' + (enabled ? 'açık (21–23%)' : 'kapalı — gerçek sensör'));
+    } else {
+      toast('O2 simülasyon değiştirilemedi', 'error');
+    }
+  } catch (e) {
+    toast('O2 simülasyon hatası: ' + e.message, 'error');
   }
 }
 

@@ -48,6 +48,11 @@ module.exports = (sequelize, Sequelize) => {
 			o2Point100LastCalibration: Sequelize.DATE,
 			o2AlarmValuePercentage: { type: Sequelize.FLOAT, defaultValue: 23.5 },
 			o2AlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
+			// O2 simülasyon: açıkken gerçek sensör yerine 21–23% rastgele değer
+			o2SimulationEnabled: { type: Sequelize.BOOLEAN, defaultValue: false },
+			// FFS (yangın söndürme sistemi) alarmları — seçimli, default kapalı
+			ffsTankPressureAlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
+			ffsWaterLevelAlarmOn: { type: Sequelize.BOOLEAN, defaultValue: false },
 			// Filter Alpha
 			filterAlphaPressure: { type: Sequelize.FLOAT, defaultValue: 0.35 },
 			filterAlphaO2: { type: Sequelize.FLOAT, defaultValue: 0.2 },

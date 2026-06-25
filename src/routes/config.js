@@ -46,6 +46,11 @@ const defaultConfigValues = {
 	o2Point100LastCalibration: null,
 	o2AlarmValuePercentage: 23.5,
 	o2AlarmOn: false,
+	// O2 simülasyon: açıkken gerçek sensör yerine 21–23% arası rastgele değer üretir
+	o2SimulationEnabled: false,
+	// FFS alarmları — seçimli, default kapalı
+	ffsTankPressureAlarmOn: false,
+	ffsWaterLevelAlarmOn: false,
 	// Filter Alpha
 	filterAlphaPressure: 0.35,
 	filterAlphaO2: 0.2,

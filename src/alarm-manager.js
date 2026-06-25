@@ -100,6 +100,27 @@ class AlarmManager {
 		}
 	}
 
+	// Operator dismissed the alarm on one tablet → dismiss on ALL tablets AND remove it (applying the
+	// type's cooldown) so a persistent/recurring condition (high-O2, high-humidity, door, FFS) RE-WARNS
+	// after the cooldown instead of being silenced forever; alarms with no cooldown (smoke, patient
+	// emergency) re-raise next tick and cannot be permanently dismissed. Re-emits over the same
+	// chamberControl path that delivers alarms, so both tablets close the modal instantly.
+	acknowledge(type) {
+		const types = type ? [type] : [...this.activeAlarms.keys()];
+		let any = false;
+		for (const t of types) {
+			if (!this.activeAlarms.has(t)) continue;
+			this.activeAlarms.delete(t);
+			const cooldownMs = this.cooldownDefaults[t] || 0;
+			if (cooldownMs > 0) this.cooldowns.set(t, Date.now() + cooldownMs);
+			any = true;
+			if (this.socket) {
+				this.socket.emit('chamberControl', { type: 'alarmAck', data: { clearedType: t } });
+			}
+		}
+		return any;
+	}
+
 	isActive(type) {
 		return this.activeAlarms.has(type);
 	}
